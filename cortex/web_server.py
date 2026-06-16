@@ -6,7 +6,7 @@ Cortex Web Server — FastAPI app that:
   - Injects the WebSocket broadcast hook into the MCP server module
 
 Run:
-    python -m cortex.web_server [--root /path/to/project] [--port 7842]
+    cortex run [--root /path/to/project] [--port 7842]
 """
 
 from __future__ import annotations
@@ -198,6 +198,21 @@ def _build_app(project_root: Path) -> FastAPI:
         entry = mgr.commit_snapshot(message)
         await hub.broadcast(json.dumps({"event": "snapshot", "entry": entry}))
         return JSONResponse(entry)
+
+    @app.get("/api/trail")
+    async def api_trail(limit: int = 100):
+        trail_path = project_root / ".cortex" / "trail.jsonl"
+        if not trail_path.exists():
+            return JSONResponse([])
+        entries = []
+        for line in trail_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    pass
+        return JSONResponse(entries[-limit:])
 
     # ------------------------------------------------------------------
     # WebSocket

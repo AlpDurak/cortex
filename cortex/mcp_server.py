@@ -27,6 +27,9 @@ from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
 
+import uuid as _uuid
+from datetime import datetime as _dt
+
 # Resolve the project root (directory that contains .cortex/)
 # PROJECT_ROOT is set by `cortex mcp` (via main.py) or defaults to cwd.
 PROJECT_ROOT = Path.cwd()
@@ -34,6 +37,37 @@ PROJECT_ROOT = Path.cwd()
 # Lazy-initialised singletons — created on first tool call
 _mgr = None
 _ws_broadcast: Any = None   # injected by the web server when running combined
+
+_session_id: str | None = None
+_hook_reminder_shown: bool = False
+
+
+def _get_session_id() -> str:
+    global _session_id
+    if _session_id is None:
+        _session_id = str(_uuid.uuid4())[:8]
+    return _session_id
+
+
+def _trail_append(tool_name: str, args: dict | None = None) -> None:
+    global _hook_reminder_shown
+    if not _hook_reminder_shown:
+        _hook_reminder_shown = True
+        import sys as _sys
+        print(
+            "\n[Cortex] Tip: run 'cortex hook install' to auto-snapshot on every git commit.\n",
+            file=_sys.stderr,
+        )
+    mgr = _get_mgr()
+    trail_path = mgr.cortex_dir / "trail.jsonl"
+    entry = {
+        "ts": _dt.utcnow().isoformat() + "Z",
+        "tool": tool_name,
+        "session": _get_session_id(),
+        "args": args or {},
+    }
+    with trail_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 
 def _get_mgr():
@@ -82,6 +116,7 @@ def get_graph_timeline() -> str:
     Use this to understand what changed over time before calling
     query_graph_diff.
     """
+    _trail_append("get_graph_timeline")
     mgr = _get_mgr()
     timeline = mgr.get_timeline()
     if not timeline:
@@ -111,6 +146,7 @@ def query_graph_diff(
 
     Call get_graph_timeline first to discover valid slot numbers.
     """
+    _trail_append("query_graph_diff", {"from_version": from_version, "to_version": to_version})
     mgr = _get_mgr()
     from core.graph_api import compute_diff
 
@@ -152,6 +188,7 @@ def explore_neighborhood(
     Use depth=1 for a quick scan of direct neighbours and depth=2 to
     discover indirect dependencies one hop further out.
     """
+    _trail_append("explore_neighborhood", {"node_id": node_id, "depth": depth})
     from core.graph_api import get_neighborhood
 
     mgr = _get_mgr()
@@ -199,6 +236,7 @@ def find_structural_path(
     infrastructure?" or "Which services are in the chain between this
     file and the database?"
     """
+    _trail_append("find_structural_path", {"start": start_node_id, "end": end_node_id})
     from core.graph_api import find_path
 
     mgr = _get_mgr()
@@ -259,6 +297,7 @@ def write_system_design_node(
 
     Automatically snapshots the graph after writing.
     """
+    _trail_append("write_system_design_node", {"id": id, "name": name})
     mgr = _get_mgr()
     conn = mgr.conn
 
@@ -389,6 +428,7 @@ def write_agent_instructions() -> str:
     - If neither file exists, both are created.
     - Returns a summary of what was written.
     """
+    _trail_append("write_agent_instructions")
     section = """
 ## Cortex Knowledge Graph
 
@@ -439,6 +479,7 @@ def list_design_sections() -> str:
     Call this first when exploring an unfamiliar project to understand its
     architecture before drilling into specific nodes with explore_neighborhood.
     """
+    _trail_append("list_design_sections")
     mgr = _get_mgr()
     rows = mgr.query_to_dicts(
         "MATCH (n:SystemDesign) RETURN n.id AS id, n.name AS name, "
@@ -468,6 +509,40 @@ def list_design_sections() -> str:
 
 
 @mcp.tool()
+def get_session_trail(
+    limit: Annotated[int, "Max entries to return (default 50)"] = 50
+) -> str:
+    """
+    Returns recent MCP tool invocations logged in .cortex/trail.jsonl.
+
+    The Session Trail records every tool call with its timestamp, tool name,
+    session ID (8-char UUID prefix), and key arguments. Use this to understand
+    what an AI agent did in a previous session.
+    """
+    _trail_append("get_session_trail")
+    mgr = _get_mgr()
+    trail_path = mgr.cortex_dir / "trail.jsonl"
+    if not trail_path.exists():
+        return "No trail entries yet."
+
+    entries = []
+    for line in trail_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    entries = entries[-limit:]
+    lines = ["# Session Trail\n"]
+    for e in entries:
+        arg_str = f"  {e['args']}" if e.get("args") else ""
+        lines.append(f"[{e['ts']}] session={e['session']}  {e['tool']}{arg_str}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def write_group_node(
     id: Annotated[str, "Group ID, e.g. Group:Auth"],
     name: Annotated[str, "Human-readable group name"],
@@ -488,6 +563,7 @@ def write_group_node(
     Member nodes must already exist in the graph. Unknown IDs are reported as
     warnings but do not block the write.
     """
+    _trail_append("write_group_node", {"id": id, "name": name})
     mgr = _get_mgr()
     conn = mgr.conn
 
