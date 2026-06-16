@@ -13,8 +13,7 @@ __pycache__/
 .claude/
 .playwright-mcp/
 .superpowers/
-docs/superpowers/
 
-# Scratch files
+# Scratch files (superseded by docs/superpowers/)
 project.md
 TODO.md
