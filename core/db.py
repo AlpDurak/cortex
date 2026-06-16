@@ -286,6 +286,29 @@ class DatabaseManager:
             v["label"] = "Current" if i == 0 else f"Commit #{total - i}"
         return versions
 
+    def migrate_decision_arc_status(self) -> int:
+        """Migrate old status vocabulary to Decision Arc values. Returns count updated."""
+        mapping = {
+            "planned": "proposed",
+            "in-progress": "building",
+            "in_progress": "building",
+            "done": "shipped",
+        }
+        rows = self.query_to_dicts(
+            "MATCH (n:SystemDesign) RETURN n.id AS id, n.status AS status"
+        )
+        updated = 0
+        for row in rows:
+            old = row.get("status") or ""
+            new = mapping.get(old)
+            if new:
+                self.conn.execute(
+                    "MATCH (n:SystemDesign {id: $id}) SET n.status = $s",
+                    {"id": row["id"], "s": new},
+                )
+                updated += 1
+        return updated
+
     def open_version_conn(self, slot: int) -> kuzu.Connection:
         """
         Open a *read-only* connection to a historical snapshot.

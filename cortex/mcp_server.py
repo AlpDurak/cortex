@@ -231,7 +231,7 @@ def write_system_design_node(
     name: Annotated[str, "Human-readable name for this design node"],
     section: Annotated[str, "Design section this belongs to, e.g. Auth, Payments, Storage"],
     description: Annotated[str, "Full description of the design intent"],
-    status: Annotated[str, "planned | in-progress | done"] = "planned",
+    status: Annotated[str, "proposed | building | shipped"] = "proposed",
     rationale: Annotated[str, "Why this approach was chosen"] = "",
     connects_to: Annotated[
         str,
@@ -266,6 +266,13 @@ def write_system_design_node(
         conn_list: list[dict] = json.loads(connects_to)
     except json.JSONDecodeError as exc:
         return f"Error: `connects_to` is not valid JSON — {exc}"
+
+    _valid_statuses = {"proposed", "building", "shipped"}
+    if status not in _valid_statuses:
+        return (
+            f"Error: invalid status '{status}'. "
+            f"Decision Arc values: proposed | building | shipped"
+        )
 
     valid_rels = {
         "CONTAINS", "MODIFIES", "DEPENDS_ON", "QUERIES", "TALKS_TO", "HOSTED_ON",
