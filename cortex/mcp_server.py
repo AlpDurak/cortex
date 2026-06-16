@@ -467,6 +467,89 @@ def list_design_sections() -> str:
     return "\n".join(lines)
 
 
+@mcp.tool()
+def write_group_node(
+    id: Annotated[str, "Group ID, e.g. Group:Auth"],
+    name: Annotated[str, "Human-readable group name"],
+    description: Annotated[str, "What this group represents architecturally"],
+    section: Annotated[str, "Design section this group belongs to"],
+    member_ids: Annotated[
+        str,
+        "JSON array of existing node IDs to add as members, e.g. "
+        '[{"id": "File:auth.py:f1"}]. Pass \'[]\' to create an empty group.',
+    ] = "[]",
+) -> str:
+    """
+    Creates or updates a Group node and wires member nodes to it via MEMBER_OF edges.
+
+    Groups appear in the web UI as rectangular compound containers. Use them to
+    represent subsystems, domains, or cross-cutting clusters of nodes.
+
+    Member nodes must already exist in the graph. Unknown IDs are reported as
+    warnings but do not block the write.
+    """
+    mgr = _get_mgr()
+    conn = mgr.conn
+
+    try:
+        members: list[str] = json.loads(member_ids)
+    except json.JSONDecodeError as exc:
+        return f"Error: `member_ids` is not valid JSON — {exc}"
+
+    exists_r = conn.execute(
+        "MATCH (g:NodeGroup {id: $id}) RETURN count(*) AS c", {"id": id}
+    )
+    rows = []
+    while exists_r.has_next():
+        rows.append(exists_r.get_next())
+    if not (rows and rows[0][0] > 0):
+        conn.execute(
+            "CREATE (g:NodeGroup {id: $id, name: '', description: '', section: ''})",
+            {"id": id},
+        )
+
+    for prop, val in [("name", name), ("description", description), ("section", section)]:
+        conn.execute(
+            f"MATCH (g:NodeGroup {{id: $id}}) SET g.{prop} = $val",
+            {"id": id, "val": val},
+        )
+
+    from core.graph_api import _node_label
+    created: list[str] = []
+    warnings: list[str] = []
+
+    for member_id in members:
+        member_label = _node_label(conn, member_id)
+        if not member_label:
+            warnings.append(f"Member not found: {member_id}")
+            continue
+        try:
+            conn.execute(
+                f"MATCH (m:{member_label} {{id: $mid}}), (g:NodeGroup {{id: $gid}}) "
+                "CREATE (m)-[:MEMBER_OF]->(g)",
+                {"mid": member_id, "gid": id},
+            )
+            created.append(member_id)
+        except Exception as exc:
+            warnings.append(f"Edge failed for {member_id}: {exc}")
+
+    snapshot = mgr.commit_snapshot(f"write_group_node: {name}")
+
+    lines = [
+        "# Group Node Written\n",
+        f"ID:          {id}",
+        f"Name:        {name}",
+        f"Section:     {section}",
+        f"Description: {description}",
+        f"\nMembers added ({len(created)}): {', '.join(created) or '(none)'}",
+    ]
+    if warnings:
+        lines.append(f"\nWarnings ({len(warnings)}):")
+        lines += [f"  {w}" for w in warnings]
+    lines.append(f"\nSnapshot: slot={snapshot['slot']} ts={snapshot['timestamp']}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

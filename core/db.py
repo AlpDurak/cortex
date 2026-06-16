@@ -85,6 +85,15 @@ _NODE_TABLES = [
         PRIMARY KEY (id)
     )
     """,
+    """
+    CREATE NODE TABLE IF NOT EXISTS NodeGroup(
+        id STRING,
+        name STRING,
+        description STRING,
+        section STRING,
+        PRIMARY KEY (id)
+    )
+    """,
 ]
 
 _REL_TABLES = [
@@ -99,6 +108,12 @@ _REL_TABLES = [
     "CREATE REL TABLE IF NOT EXISTS USES(FROM SystemDesign TO Service)",
     "CREATE REL TABLE IF NOT EXISTS STORES_IN(FROM SystemDesign TO Database)",
     "CREATE REL TABLE IF NOT EXISTS RUNS_ON(FROM SystemDesign TO Infrastructure)",
+    (
+        "CREATE REL TABLE IF NOT EXISTS MEMBER_OF("
+        "FROM File TO NodeGroup, FROM SystemDesign TO NodeGroup, "
+        "FROM Service TO NodeGroup, FROM Database TO NodeGroup, "
+        "FROM Infrastructure TO NodeGroup, FROM NodeGroup TO NodeGroup)"
+    ),
 ]
 
 

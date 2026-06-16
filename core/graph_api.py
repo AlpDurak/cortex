@@ -16,12 +16,12 @@ import kuzu
 from core.db import DatabaseManager
 
 # All node table names defined in the schema
-NODE_TABLES = ["File", "SystemDesign", "Service", "Database", "Infrastructure"]
+NODE_TABLES = ["File", "SystemDesign", "Service", "Database", "Infrastructure", "NodeGroup"]
 
 # All rel table names defined in the schema
 REL_TABLES = [
     "CONTAINS", "MODIFIES", "DEPENDS_ON", "QUERIES", "TALKS_TO", "HOSTED_ON",
-    "IMPLEMENTS", "PART_OF", "USES", "STORES_IN", "RUNS_ON",
+    "IMPLEMENTS", "PART_OF", "USES", "STORES_IN", "RUNS_ON", "MEMBER_OF",
 ]
 
 
