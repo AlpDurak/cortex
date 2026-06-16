@@ -1158,8 +1158,55 @@ def _checkbox_ui_windows(platforms: list[dict]) -> list[str]:
     return selected
 
 
-def run_connect(project_root: Path, preselect: list[str] | None = None) -> None:
-    """Run the interactive Cortex Connect installer."""
+def _ask_yes_no(prompt: str) -> bool:
+    """Prompt the user for Y/N. Returns True for yes."""
+    while True:
+        answer = input(f"{prompt} [y/N]: ").strip().lower()
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("", "n", "no"):
+            return False
+
+
+def _install_git_hook(project_root: Path) -> None:
+    """Install the Cortex post-commit hook into the nearest .git/hooks/ directory."""
+    from cortex.main import _HOOK_MARKER, _HOOK_SCRIPT
+    import stat
+
+    git_dir = project_root / ".git"
+    if not git_dir.is_dir():
+        # Walk up to find .git
+        candidate = project_root
+        while candidate != candidate.parent:
+            candidate = candidate.parent
+            if (candidate / ".git").is_dir():
+                git_dir = candidate / ".git"
+                break
+        else:
+            print("  ✗ Git Ledger: .git directory not found — skipping.")
+            return
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(exist_ok=True)
+    hook_path = hooks_dir / "post-commit"
+    hook_path.write_text(_HOOK_SCRIPT, encoding="utf-8")
+    current = hook_path.stat().st_mode
+    hook_path.chmod(current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    print(f"  ✓ Git Ledger: hook installed at {hook_path}")
+    print("    Every git commit will now auto-snapshot the Cortex graph.")
+
+
+def run_connect(
+    project_root: Path,
+    preselect: list[str] | None = None,
+    git_ledger: bool | None = None,
+) -> None:
+    """
+    Run the interactive Cortex Connect installer.
+
+    After platform selection, asks whether to enable Git Ledger
+    (the Anchored Commits git post-commit hook for auto graph snapshots).
+    """
     cortex_bin = _find_cortex_bin()
     root_str = str(project_root)
 
@@ -1174,21 +1221,33 @@ def run_connect(project_root: Path, preselect: list[str] | None = None) -> None:
             selected_keys = _checkbox_ui_windows(PLATFORMS)
 
     if not selected_keys:
-        print("[Cortex Connect] No platforms selected. Nothing installed.")
-        return
+        print("[Cortex Connect] No platforms selected.")
+    else:
+        entry = _mcp_entry(cortex_bin, root_str)
+        print(f"\n[Cortex Connect] Installing for: {', '.join(selected_keys)}\n")
 
-    entry = _mcp_entry(cortex_bin, root_str)
-    print(f"\n[Cortex Connect] Installing for: {', '.join(selected_keys)}\n")
+        for platform in PLATFORMS:
+            if platform["key"] not in selected_keys:
+                continue
+            ok, msg = _write_config(platform, entry)
+            icon = "✓" if ok else "✗"
+            print(f"  {icon} {platform['name']}: {msg}")
 
-    for platform in PLATFORMS:
-        if platform["key"] not in selected_keys:
-            continue
-        ok, msg = _write_config(platform, entry)
-        icon = "✓" if ok else "✗"
-        print(f"  {icon} {platform['name']}: {msg}")
+    # Git Ledger prompt — always shown regardless of platform selection
+    print()
+    if git_ledger is None:
+        git_ledger = _ask_yes_no(
+            "[Cortex Connect] Enable Git Ledger? (auto-snapshot graph on every git commit)"
+        )
+
+    if git_ledger:
+        _install_git_hook(project_root)
+    else:
+        print("  Git Ledger skipped. Enable later with: cortex hook install")
 
     print(f"\n[Cortex Connect] Done. MCP binary: {cortex_bin}")
-    print("  Start the MCP server with: cortex mcp --root <project-root>")
+    if selected_keys:
+        print("  Start the MCP server with: cortex mcp --root <project-root>")
 ```
 
 - [ ] **Step 2: Add connect subcommand to cortex/main.py**
@@ -1201,6 +1260,10 @@ Add parser:
                            help="Project root (default: current directory)")
     p_connect.add_argument("--select", nargs="*", metavar="PLATFORM",
                            help="Non-interactive: pre-select platforms by key")
+    p_connect.add_argument("--git-ledger", action="store_true", default=None,
+                           help="Non-interactive: enable Git Ledger hook without prompting")
+    p_connect.add_argument("--no-git-ledger", dest="git_ledger", action="store_false",
+                           help="Non-interactive: skip Git Ledger hook without prompting")
 ```
 
 Add dispatch:
@@ -1214,7 +1277,8 @@ Add function:
 def _cmd_connect(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     from cortex.connect import run_connect
-    run_connect(root, preselect=args.select)
+    # args.git_ledger is True, False, or None (None = ask interactively)
+    run_connect(root, preselect=args.select, git_ledger=args.git_ledger)
 ```
 
 - [ ] **Step 3: Smoke-test connect in non-interactive mode**
