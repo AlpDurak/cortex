@@ -26,6 +26,8 @@ _NODE_TABLES = [
         code_block STRING,
         file_path STRING,
         language STRING,
+        source_file STRING,
+        source_line INT64,
         PRIMARY KEY (id)
     )
     """,
@@ -39,6 +41,8 @@ _NODE_TABLES = [
         status STRING,
         section STRING,
         rationale STRING,
+        source_file STRING,
+        source_line INT64,
         PRIMARY KEY (id)
     )
     """,
@@ -50,6 +54,8 @@ _NODE_TABLES = [
         code_block STRING,
         service_type STRING,
         endpoint STRING,
+        source_file STRING,
+        source_line INT64,
         PRIMARY KEY (id)
     )
     """,
@@ -61,6 +67,8 @@ _NODE_TABLES = [
         code_block STRING,
         db_type STRING,
         connection_string STRING,
+        source_file STRING,
+        source_line INT64,
         PRIMARY KEY (id)
     )
     """,
@@ -72,6 +80,8 @@ _NODE_TABLES = [
         code_block STRING,
         provider STRING,
         region STRING,
+        source_file STRING,
+        source_line INT64,
         PRIMARY KEY (id)
     )
     """,
@@ -124,6 +134,16 @@ def _migrate_schema(conn: kuzu.Connection) -> None:
     migrations = [
         "ALTER TABLE SystemDesign ADD section STRING DEFAULT ''",
         "ALTER TABLE SystemDesign ADD rationale STRING DEFAULT ''",
+        "ALTER TABLE File ADD source_file STRING DEFAULT ''",
+        "ALTER TABLE File ADD source_line INT64 DEFAULT 0",
+        "ALTER TABLE SystemDesign ADD source_file STRING DEFAULT ''",
+        "ALTER TABLE SystemDesign ADD source_line INT64 DEFAULT 0",
+        "ALTER TABLE Service ADD source_file STRING DEFAULT ''",
+        "ALTER TABLE Service ADD source_line INT64 DEFAULT 0",
+        "ALTER TABLE Database ADD source_file STRING DEFAULT ''",
+        "ALTER TABLE Database ADD source_line INT64 DEFAULT 0",
+        "ALTER TABLE Infrastructure ADD source_file STRING DEFAULT ''",
+        "ALTER TABLE Infrastructure ADD source_line INT64 DEFAULT 0",
     ]
     for ddl in migrations:
         try:
