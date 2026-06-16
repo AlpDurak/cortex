@@ -214,6 +214,78 @@ def _build_app(project_root: Path) -> FastAPI:
                     pass
         return JSONResponse(entries[-limit:])
 
+    @app.get("/api/search")
+    async def api_search(q: str = "", top_n: int = 20):
+        if not q:
+            return JSONResponse([])
+        from core.analysis import pulse_search
+        return JSONResponse(pulse_search(mgr.conn, q, top_n=top_n))
+
+    @app.get("/api/clusters")
+    async def api_clusters():
+        from core.analysis import detect_signal_clusters
+        clusters = detect_signal_clusters(mgr.conn, project_root)
+        return JSONResponse(clusters)
+
+    @app.get("/api/keystones")
+    async def api_keystones(top_n: int = 10):
+        from core.analysis import get_keystones
+        return JSONResponse(get_keystones(mgr.conn, top_n=top_n))
+
+    @app.get("/api/latent-bridges")
+    async def api_latent_bridges(top_n: int = 20):
+        from core.analysis import get_latent_bridges
+        return JSONResponse(get_latent_bridges(mgr.conn, project_root, top_n=top_n))
+
+    @app.get("/api/ledger")
+    async def api_ledger(limit: int = 200):
+        ledger_path = project_root / ".cortex" / "ledger.jsonl"
+        if not ledger_path.exists():
+            return JSONResponse([])
+        entries = []
+        for line in ledger_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    pass
+        return JSONResponse(entries[-limit:])
+
+    @app.get("/api/brief")
+    async def api_brief():
+        from core.analysis import generate_brief
+        return JSONResponse({"brief": generate_brief(mgr.conn, project_root)})
+
+    @app.post("/api/export")
+    async def api_export(body: dict[str, Any] = {}):
+        fmt = body.get("format", "graphml")
+        try:
+            from core.export import export_graphml, export_obsidian, export_wiki, export_svg
+        except ImportError:
+            return JSONResponse({"error": "Export module not yet installed"}, status_code=501)
+        if fmt == "graphml":
+            return Response(content=export_graphml(mgr.conn), media_type="application/xml")
+        elif fmt == "svg":
+            return Response(content=export_svg(mgr.conn), media_type="image/svg+xml")
+        elif fmt == "wiki":
+            return Response(content=export_wiki(mgr.conn, project_root), media_type="text/markdown")
+        elif fmt == "obsidian":
+            import tempfile, zipfile, io
+            with tempfile.TemporaryDirectory() as tmpdir:
+                export_obsidian(mgr.conn, Path(tmpdir))
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w") as zf:
+                    for f in Path(tmpdir).glob("*.md"):
+                        zf.write(f, f.name)
+                buf.seek(0)
+                return Response(
+                    content=buf.read(),
+                    media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="cortex-obsidian.zip"'},
+                )
+        return JSONResponse({"error": f"Unknown format: {fmt}"}, status_code=400)
+
     # ------------------------------------------------------------------
     # WebSocket
     # ------------------------------------------------------------------

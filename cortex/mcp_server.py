@@ -543,6 +543,89 @@ def get_session_trail(
 
 
 @mcp.tool()
+def detect_signal_clusters_tool(
+    resolution: Annotated[float, "Leiden resolution parameter (default 1.0 — higher = more clusters)"] = 1.0,
+) -> str:
+    """
+    Run community detection on the graph to find Signal Clusters.
+
+    Uses the Leiden algorithm when leidenalg + python-igraph are installed
+    (pip install cortex[analysis]). Falls back to BFS connected components otherwise.
+
+    Results are cached in .cortex/clusters.json and reused until the next snapshot.
+    """
+    _trail_append("detect_signal_clusters")
+    from core.analysis import detect_signal_clusters
+    clusters = detect_signal_clusters(_get_mgr().conn, PROJECT_ROOT, resolution=resolution)
+    if not clusters:
+        return "No nodes in graph — nothing to cluster."
+    lines = [f"# Signal Clusters ({len(clusters)} found)\n"]
+    for c in clusters:
+        lines.append(f"## {c['label']} (color={c['color']})")
+        lines.append(f"Members ({len(c['members'])}): {', '.join(c['members'][:10])}" +
+                     (" …" if len(c['members']) > 10 else ""))
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def get_keystones_tool(
+    top_n: Annotated[int, "Number of top nodes to return (default 10)"] = 10,
+) -> str:
+    """
+    Return the top-N highest-degree nodes — the architectural 'god nodes'.
+
+    Keystones are nodes with the most connections. They are often central
+    services, shared utilities, or load-bearing design decisions.
+    """
+    _trail_append("get_keystones")
+    from core.analysis import get_keystones
+    keystones = get_keystones(_get_mgr().conn, top_n=top_n)
+    if not keystones:
+        return "No nodes found."
+    lines = [f"# Keystones (top {top_n} by degree)\n"]
+    for i, n in enumerate(keystones, 1):
+        lines.append(f"{i}. [{n['label']}] {n['id']}  degree={n['degree']}  name={n['name']!r}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def get_latent_bridges_tool(
+    top_n: Annotated[int, "Max bridges to return (default 20)"] = 20,
+) -> str:
+    """
+    Return edges that cross cluster boundaries — surprising architectural connections.
+
+    Latent Bridges highlight non-obvious dependencies between subsystems.
+    Run detect_signal_clusters first to generate .cortex/clusters.json.
+    """
+    _trail_append("get_latent_bridges")
+    from core.analysis import get_latent_bridges
+    bridges = get_latent_bridges(_get_mgr().conn, PROJECT_ROOT, top_n=top_n)
+    if not bridges:
+        return "No cross-cluster edges found. Run detect_signal_clusters first."
+    lines = [f"# Latent Bridges ({len(bridges)})\n"]
+    for b in bridges:
+        lines.append(
+            f"({b['src']})-[{b['rel']}]->({b['dst']})  "
+            f"cluster {b['src_cluster']} → {b['dst_cluster']}"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def get_cortex_brief() -> str:
+    """
+    Generate a markdown summary of the project knowledge graph.
+
+    Returns node counts by type, architecture sections with design nodes,
+    and the three most recent graph snapshots. No LLM required.
+    """
+    _trail_append("get_cortex_brief")
+    from core.analysis import generate_brief
+    return generate_brief(_get_mgr().conn, PROJECT_ROOT)
+
+
+@mcp.tool()
 def write_group_node(
     id: Annotated[str, "Group ID, e.g. Group:Auth"],
     name: Annotated[str, "Human-readable group name"],
