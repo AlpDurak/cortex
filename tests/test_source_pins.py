@@ -48,3 +48,31 @@ def test_service_node_has_source_pins(mgr):
     )
     assert rows[0]["sf"] == ""
     assert rows[0]["sl"] == 0
+
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+import cortex.mcp_server as srv
+
+
+def test_write_system_design_node_sets_source_pins(tmp_path):
+    srv.PROJECT_ROOT = tmp_path
+    srv._mgr = None
+    result = srv.write_system_design_node(
+        id="sd:Auth:OAuthFlow",
+        name="OAuthFlow",
+        section="Auth",
+        description="OAuth2 login",
+        source_file="docs/auth.md",
+        source_line=42,
+    )
+    assert "sd:Auth:OAuthFlow" in result
+    assert "Error" not in result
+    mgr = srv._get_mgr()
+    rows = mgr.query_to_dicts(
+        "MATCH (n:SystemDesign {id: 'sd:Auth:OAuthFlow'}) "
+        "RETURN n.source_file AS sf, n.source_line AS sl"
+    )
+    assert rows[0]["sf"] == "docs/auth.md"
+    assert rows[0]["sl"] == 42
+    srv._mgr = None

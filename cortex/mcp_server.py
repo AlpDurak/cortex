@@ -11,10 +11,10 @@ Tools
   write_system_design_node(id, title, type, description, connections)
 
 Run (stdio transport, for Cursor / Claude Desktop / Windsurf):
-    python -m cortex.mcp_server
+    cortex mcp
 
 Run (SSE transport, for web debugging):
-    python -m cortex.mcp_server --sse
+    cortex mcp --sse
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from typing import Annotated, Any
 from mcp.server.fastmcp import FastMCP
 
 # Resolve the project root (directory that contains .cortex/)
-# When run as `python -m cortex.mcp_server`, cwd is the project root.
+# PROJECT_ROOT is set by `cortex mcp` (via main.py) or defaults to cwd.
 PROJECT_ROOT = Path.cwd()
 
 # Lazy-initialised singletons — created on first tool call
@@ -238,6 +238,8 @@ def write_system_design_node(
         "JSON array of {rel, target_id} e.g. "
         '[{"rel":"IMPLEMENTS","target_id":"File:auth.py"}]. Pass \'[]\' for none.',
     ] = "[]",
+    source_file: Annotated[str, "Source file where this decision is documented, e.g. docs/auth.md"] = "",
+    source_line: Annotated[int, "Line number in source_file (0 = unset)"] = 0,
 ) -> str:
     """
     Writes a SystemDesign node into the live graph and wires it to existing nodes.
@@ -303,6 +305,11 @@ def write_system_design_node(
     _set("section", section)
     _set("status", status)
     _set("rationale", rationale)
+    _set("source_file", source_file)
+    conn.execute(
+        "MATCH (n:SystemDesign {id: $id}) SET n.source_line = $val",
+        {"id": id, "val": source_line},
+    )
 
     from core.graph_api import _node_label, _format_triple
     created_edges: list[str] = []
