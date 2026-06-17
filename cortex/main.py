@@ -17,6 +17,42 @@ import sys
 from pathlib import Path
 
 
+def _cmd_relay(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    from core.db import DatabaseManager
+    from core.relay import relay_neo4j, relay_falkordb
+
+    mgr = DatabaseManager(root)
+    mgr.init()
+
+    if args.target == "neo4j":
+        stmts = relay_neo4j(
+            mgr.conn,
+            uri=args.uri,
+            user=args.user,
+            password=args.password,
+            database=args.database,
+            cypher_only=args.cypher_only,
+        )
+    else:
+        stmts = relay_falkordb(
+            mgr.conn,
+            host=args.host,
+            port=args.port,
+            password=args.password,
+            graph_name=args.graph,
+            cypher_only=args.cypher_only,
+        )
+
+    mgr.close()
+
+    if args.cypher_only:
+        for stmt in stmts:
+            print(stmt)
+    else:
+        print(f"[Cortex] Relayed {len(stmts)} statements to {args.target}.")
+
+
 def _cmd_init(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     if not root.exists():
@@ -35,6 +71,10 @@ def _cmd_init(args: argparse.Namespace) -> None:
     print(f"Done — graph database ready at {root / '.cortex'}")
     print()
     print("Tip: run 'cortex hook install' to enable automatic git commit snapshots.")
+    print()
+    print("Optional: to enable the Graph Reconciler merge driver, add to your project:")
+    print("  echo '.cortex/versions.json merge=cortex-versions' >> .gitattributes")
+    print("  git config merge.cortex-versions.driver 'cortex reconcile %O %A %B'")
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
@@ -99,6 +139,26 @@ def main() -> None:
         help="Use SSE transport instead of stdio (for web debugging)",
     )
 
+    # ── relay ────────────────────────────────────────────────────────────────
+    p_relay = sub.add_parser("relay", help="Push graph to Neo4j or FalkorDB")
+    p_relay.add_argument("target", choices=["neo4j", "falkordb"], help="Target graph DB")
+    p_relay.add_argument("--root", default=".", metavar="DIR")
+    p_relay.add_argument("--uri", default="bolt://localhost:7687", help="Neo4j bolt URI")
+    p_relay.add_argument("--host", default="localhost", help="FalkorDB host")
+    p_relay.add_argument("--port", type=int, default=6379, help="FalkorDB port")
+    p_relay.add_argument("--user", default="neo4j", help="Neo4j username")
+    p_relay.add_argument("--password", default="", help="Database password")
+    p_relay.add_argument("--database", default="neo4j", help="Neo4j database name")
+    p_relay.add_argument("--graph", default="cortex", help="FalkorDB graph name")
+    p_relay.add_argument("--cypher-only", action="store_true",
+                         help="Print Cypher statements without connecting")
+
+    # ── reconcile (git merge driver) ─────────────────────────────────────────
+    p_rec = sub.add_parser("reconcile", add_help=False)
+    p_rec.add_argument("base")
+    p_rec.add_argument("ours")
+    p_rec.add_argument("theirs")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -107,3 +167,8 @@ def main() -> None:
         _cmd_run(args)
     elif args.command == "mcp":
         _cmd_mcp(args)
+    elif args.command == "relay":
+        _cmd_relay(args)
+    elif args.command == "reconcile":
+        from core.reconciler import reconcile_files
+        sys.exit(reconcile_files(args.base, args.ours, args.theirs))
