@@ -105,3 +105,43 @@ def test_snapshot_message_includes_sha(tmp_path):
 
     messages = [v["message"] for v in timeline]
     assert any("deadbeef" in m for m in messages)
+
+
+@pytest.mark.skipif(
+    not __import__("shutil").which("cortex"),
+    reason="cortex binary not on PATH"
+)
+def test_hook_fires_on_git_commit(tmp_path):
+    """Integration: install hook, make a commit, verify snapshot was created."""
+    import subprocess
+
+    # Init git repo and cortex
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"],
+                   cwd=tmp_path, check=True, capture_output=True)
+
+    result = _run(["init", "--root", str(tmp_path)])
+    assert result.returncode == 0
+
+    result = _run(["hook", "install", "--root", str(tmp_path)])
+    assert result.returncode == 0
+
+    # Make a commit
+    test_file = tmp_path / "hello.txt"
+    test_file.write_text("hello")
+    subprocess.run(["git", "add", "hello.txt"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "test: integration commit"],
+                   cwd=tmp_path, check=True, capture_output=True)
+
+    # Check that a snapshot was created beyond the genesis one
+    from core.db import DatabaseManager
+    mgr = DatabaseManager(tmp_path)
+    mgr.init()
+    timeline = mgr.get_timeline()
+    mgr.close()
+
+    assert len(timeline) >= 2  # genesis + hook snapshot
+    messages = [v["message"] for v in timeline]
+    assert any("integration commit" in m for m in messages)
