@@ -271,6 +271,11 @@
   // Public API — window.CortexGraph
   // ---------------------------------------------------------------------------
 
+  function screenshot() {
+    if (!_cy) return null;
+    return _cy.png({ output: 'base64uri', bg: '#1e1e1e', full: false });
+  }
+
   function render(nodes, edges, diffData) {
     if (!_cy) return;
 
@@ -377,7 +382,7 @@
     const wrapper = document.getElementById('canvas-wrapper');
     if (wrapper) wrapper.appendChild(buildFitBtn());
 
-    window.CortexGraph = { render, addNode, highlightSearch, clearSearch, filterEdgesByLabel, focusNode };
+    window.CortexGraph = { render, addNode, highlightSearch, clearSearch, filterEdgesByLabel, focusNode, screenshot };
 
     if (window._pendingGraph) {
       const { nodes, edges, diffData } = window._pendingGraph;

@@ -394,7 +394,7 @@
   <!-- MAIN CANVAS AREA -->
   <div id="main">
     <div id="canvas-wrapper">
-      <!-- Vis-Network mounts here in Phase 5 -->
+      <!-- Cytoscape.js mounts here -->
       <div id="graph-canvas"></div>
     </div>
     <div id="status-bar">
@@ -902,12 +902,12 @@ document.addEventListener('click', function(e) {
 function exportGraph(format) {
   document.getElementById('export-menu').style.display = 'none';
   if (format === 'png') {
-    const net = window._cortexNetwork;
-    if (!net) return;
-    const canvas = net.canvas.frame.canvas;
+    if (!window.CortexGraph) return;
+    const dataUri = window.CortexGraph.screenshot();
+    if (!dataUri) return;
     const link = document.createElement('a');
     link.download = 'cortex-graph.png';
-    link.href = canvas.toDataURL('image/png');
+    link.href = dataUri;
     link.click();
   } else if (format === 'json') {
     const blob = new Blob(
