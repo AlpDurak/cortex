@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cortex</title>
   <link rel="icon" id="dynamic-favicon" href="/favicon.ico" />
-  <!-- Vis-Network (standalone bundle includes DataSet) -->
-  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <script src="https://unpkg.com/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
   <style>
     /* ------------------------------------------------------------------ */
     /* Reset & base                                                         */
@@ -342,6 +342,9 @@
     <button class="dock-btn" id="btn-filter" title="Edge Filters" onclick="setActivePanel('filter')">
       <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
     </button>
+    <button class="dock-btn" id="btn-vitals" title="Vitals" onclick="setActivePanel('vitals')">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </button>
   </div>
 
   <!-- SECONDARY SIDEBAR -->
@@ -363,6 +366,12 @@
     <div id="filter-panel" style="display:none; flex-direction:column; flex-shrink:0; border-bottom:1px solid var(--border)">
       <div class="panel-header">Edge Filters</div>
       <div id="filter-toggles" style="padding:6px 10px 10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+
+    <!-- VITALS PANEL -->
+    <div id="vitals-panel" style="display:none; flex-direction:column; flex: 1; overflow-y:auto">
+      <div class="panel-header">Vitals</div>
+      <div id="vitals-content" style="padding:8px 14px 16px"></div>
     </div>
 
     <!-- TIMELINE PANEL -->
@@ -387,12 +396,6 @@
     <div id="canvas-wrapper">
       <!-- Vis-Network mounts here in Phase 5 -->
       <div id="graph-canvas"></div>
-      <canvas id="minimap-canvas" style="
-        position:absolute; bottom:48px; right:12px;
-        width:130px; height:90px;
-        background:rgba(26,26,26,0.92); border:1px solid #3c3c3c;
-        border-radius:6px; cursor:pointer; z-index:10;
-      "></canvas>
     </div>
     <div id="status-bar">
       <div id="status-ws">
@@ -677,7 +680,7 @@ function onNodeClick(nodeId) {
   const connectedEdges = _edges.filter(e => e.src === nodeId || e.dst === nodeId);
   const isDesign = node.label === 'SystemDesign';
 
-  const statusColor = { 'done': '#059669', 'in-progress': '#ea580c', 'planned': '#6b7280' };
+  const statusColor = { 'shipped': '#059669', 'building': '#ea580c', 'proposed': '#6b7280' };
   const sc = statusColor[node.status] || '#6b7280';
 
   const container = document.getElementById('inspector-content');
@@ -748,7 +751,7 @@ function setActivePanel(panel) {
     }
   }
 
-  const panels = { timeline: 'timeline-panel', search: 'search-panel', filter: 'filter-panel' };
+  const panels = { timeline: 'timeline-panel', search: 'search-panel', filter: 'filter-panel', vitals: 'vitals-panel' };
   Object.values(panels).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
@@ -802,13 +805,8 @@ function onSearchInput(q) {
     li.textContent = (n.name || n.id);
     li.title = n.id;
     li.addEventListener('click', () => {
-      if (window._cortexNetwork) {
-        window._cortexNetwork.focus(n.id, {
-          scale: 1.4, animation: { duration: 400, easingFunction: 'easeInOutQuad' }
-        });
-        window._cortexNetwork.selectNodes([n.id]);
-        onNodeClick(n.id);
-      }
+      if (window.CortexGraph) window.CortexGraph.focusNode(n.id);
+      onNodeClick(n.id);
     });
     ul.appendChild(li);
   });
@@ -935,7 +933,8 @@ function _download(blob, filename) {
 }
 </script>
 
-<!-- Phase 5: Vis-Network canvas (loaded after main UI script) -->
+<script src="/static/panels/vitals.js"></script>
+<script src="/static/panels/inspector.js"></script>
 <script src="/static/canvas.js"></script>
 </body>
 </html>
