@@ -81,7 +81,8 @@ def _cmd_snapshot(args: argparse.Namespace) -> None:
     mgr.init()
     message = args.message or "Git commit snapshot"
     if args.sha:
-        message = f"{message} ({args.sha[:7]})"
+        short = args.sha[:8] if len(args.sha) > 8 else args.sha
+        message = f"{message} ({short})"
     entry = mgr.commit_snapshot(message)
     mgr.close()
     print(f"[Cortex] Snapshot: slot={entry['slot']} ts={entry['timestamp']}")
