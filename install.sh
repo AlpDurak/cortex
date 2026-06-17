@@ -4,7 +4,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Cortex installer — macOS / Linux
 # Clones cortex into ./cortex/, creates a venv, installs deps,
-# and writes MCP config entries for detected AI tools.
+# links the `cortex` CLI globally, and writes MCP config entries
+# for detected AI tools.
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/AlpDurak/cortex/master/install.sh | bash
@@ -32,7 +33,6 @@ check_git() {
 }
 
 check_python() {
-  local py=""
   for cmd in python3 python; do
     if command -v "$cmd" >/dev/null 2>&1; then
       local ver
@@ -40,7 +40,7 @@ check_python() {
       local major minor
       major=$(echo "$ver" | cut -d. -f1)
       minor=$(echo "$ver" | cut -d. -f2)
-      if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
+      if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 11 ]; }; then
         PYTHON_CMD="$cmd"
         ok "Python $ver"
         return
@@ -73,13 +73,35 @@ setup_venv() {
   echo "Creating virtual environment..."
   "$PYTHON_CMD" -m venv "$INSTALL_DIR/.venv"
   VENV_PYTHON="$(pwd)/$INSTALL_DIR/.venv/bin/python"
+  VENV_CORTEX="$(pwd)/$INSTALL_DIR/.venv/bin/cortex"
   "$VENV_PYTHON" -m pip install --quiet --upgrade pip
   "$VENV_PYTHON" -m pip install --quiet -e "$INSTALL_DIR/"
   ok "Dependencies installed"
 }
 
 # ---------------------------------------------------------------------------
-# MCP config writing (uses the venv Python for JSON merging)
+# Link the `cortex` CLI onto PATH
+# ---------------------------------------------------------------------------
+
+link_cli() {
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$VENV_CORTEX" "$HOME/.local/bin/cortex"
+  ok "cortex linked → ~/.local/bin/cortex"
+
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *)
+      warn "~/.local/bin is not on your PATH."
+      echo "  Add this line to your shell config (~/.bashrc, ~/.zshrc, etc.):"
+      echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+      echo "  Then restart your shell or run:  source ~/.bashrc"
+      PATH_WARNING=1
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# MCP config writing — uses `cortex mcp` as the server command
 # ---------------------------------------------------------------------------
 
 write_json_mcp_config() {
@@ -88,9 +110,9 @@ write_json_mcp_config() {
 import json, os
 
 path = "$config_file"
-venv_python = "$VENV_PYTHON"
+cortex_bin = "$VENV_CORTEX"
 
-os.makedirs(os.path.dirname(path), exist_ok=True)
+os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
 config = {}
 if os.path.exists(path):
@@ -98,19 +120,19 @@ if os.path.exists(path):
         with open(path) as f:
             config = json.load(f)
     except json.JSONDecodeError:
-        print(f"  Warning: {path} contains invalid JSON — creating backup and overwriting")
+        print(f"  Warning: {path} has invalid JSON — backing up and overwriting")
         os.rename(path, path + ".bak")
 
 config.setdefault("mcpServers", {})["cortex"] = {
-    "command": venv_python,
-    "args": ["-m", "cortex.mcp_server"]
+    "command": cortex_bin,
+    "args": ["mcp"]
 }
 
 with open(path, "w") as f:
     json.dump(config, f, indent=2)
     f.write("\n")
 
-print(f"  → wrote cortex entry to {path}")
+print(f"  → {path}")
 PYEOF
 }
 
@@ -151,20 +173,30 @@ print_summary() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   ok "Cortex installed at: $(pwd)/$INSTALL_DIR"
   echo ""
+
   if [ -n "$CONFIGURED_TOOLS" ]; then
     echo "AI tools configured:"
     echo -e "$CONFIGURED_TOOLS"
   else
     warn "No AI tool config directories detected."
-    echo "  Add the following entry manually to your tool's MCP config:"
+    echo "  Add the following to your tool's MCP config manually:"
     echo '  "cortex": {'
-    echo "    \"command\": \"$VENV_PYTHON\","
-    echo '    "args": ["-m", "cortex.mcp_server"]'
+    echo "    \"command\": \"$VENV_CORTEX\","
+    echo '    "args": ["mcp"]'
     echo '  }'
   fi
+
   echo ""
-  echo "Start the web UI (run from your project directory):"
-  echo "  $VENV_PYTHON -m cortex.web_server"
+  echo "Usage (run from any project directory):"
+  echo "  cortex init        Initialize the knowledge graph for this project"
+  echo "  cortex run         Start the web UI  →  http://localhost:7842"
+  echo "  cortex run --port 8000  (custom port)"
+  echo ""
+
+  if [ -n "${PATH_WARNING:-}" ]; then
+    warn "Remember to add ~/.local/bin to your PATH (see above) before using 'cortex'."
+  fi
+
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
@@ -174,7 +206,9 @@ print_summary() {
 
 PYTHON_CMD=""
 VENV_PYTHON=""
+VENV_CORTEX=""
 CONFIGURED_TOOLS=""
+PATH_WARNING=""
 
 echo "Installing Cortex..."
 echo ""
@@ -182,6 +216,7 @@ check_git
 check_python
 clone_repo
 setup_venv
+link_cli
 configure_claude_code
 configure_cursor
 configure_gemini

@@ -56,6 +56,8 @@ Content-Type: application/json
 
 Or call the `commit_snapshot` MCP tool directly if available.
 
+The web server must be running (`cortex run`) for the HTTP endpoint to be reachable.
+
 ---
 
 ## New design decisions

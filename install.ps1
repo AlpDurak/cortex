@@ -1,13 +1,14 @@
 # Cortex installer — Windows (PowerShell 5.1+)
 # Clones cortex into .\cortex\, creates a venv, installs deps,
-# and writes MCP config entries for detected AI tools.
+# adds the cortex CLI to the user PATH, and writes MCP config entries
+# for detected AI tools.
 #
 # Usage:
 #   irm https://raw.githubusercontent.com/AlpDurak/cortex/master/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$REPO_URL   = "https://github.com/AlpDurak/cortex.git"
+$REPO_URL    = "https://github.com/AlpDurak/cortex.git"
 $INSTALL_DIR = "cortex"
 
 function Write-Ok($msg)   { Write-Host "OK $msg" -ForegroundColor Green }
@@ -24,13 +25,12 @@ function Check-Git {
 }
 
 function Check-Python {
-    $candidates = @("python", "py")
-    foreach ($cmd in $candidates) {
+    foreach ($cmd in @("python", "py")) {
         try {
             $ver = & $cmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
             if ($ver) {
                 $parts = $ver.Trim().Split(".")
-                if ([int]$parts[0] -ge 3 -and [int]$parts[1] -ge 11) {
+                if ([int]$parts[0] -gt 3 -or ([int]$parts[0] -eq 3 -and [int]$parts[1] -ge 11)) {
                     $script:PYTHON_CMD = $cmd
                     Write-Ok "Python $ver"
                     return
@@ -64,22 +64,39 @@ function Setup-Venv {
     Write-Host "Creating virtual environment..."
     & $script:PYTHON_CMD -m venv "$INSTALL_DIR\.venv"
     $script:VENV_PYTHON = "$(Get-Location)\$INSTALL_DIR\.venv\Scripts\python.exe"
+    $script:VENV_CORTEX = "$(Get-Location)\$INSTALL_DIR\.venv\Scripts\cortex.exe"
     & $script:VENV_PYTHON -m pip install --quiet --upgrade pip
     & $script:VENV_PYTHON -m pip install --quiet -e "$INSTALL_DIR\"
     Write-Ok "Dependencies installed"
 }
 
 # ---------------------------------------------------------------------------
-# MCP config writing
+# Add venv Scripts to user PATH so `cortex` works from any terminal
+# ---------------------------------------------------------------------------
+
+function Add-ToPath {
+    $venvScripts = "$(Get-Location)\$INSTALL_DIR\.venv\Scripts"
+    $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+    if ($userPath -like "*$venvScripts*") {
+        Write-Ok "PATH already contains venv Scripts"
+    } else {
+        [Environment]::SetEnvironmentVariable("PATH", "$userPath;$venvScripts", "User")
+        Write-Ok "Added to user PATH: $venvScripts"
+        Write-Host "  Restart your terminal (or open a new one) for 'cortex' to be available." -ForegroundColor Yellow
+    }
+}
+
+# ---------------------------------------------------------------------------
+# MCP config writing — uses `cortex mcp` as the server command
 # ---------------------------------------------------------------------------
 
 function Write-JsonMcpConfig($configFile) {
-    $venvPython = $script:VENV_PYTHON
+    $venvCortex = $script:VENV_CORTEX
     $pyScript = @'
 import json, os, sys
 
 path = sys.argv[1]
-venv_python = sys.argv[2]
+cortex_bin = sys.argv[2]
 
 os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
@@ -89,24 +106,24 @@ if os.path.exists(path):
         with open(path) as f:
             config = json.load(f)
     except json.JSONDecodeError:
-        print(f"  Warning: {path} contains invalid JSON -- creating backup")
+        print(f"  Warning: {path} has invalid JSON -- backing up")
         os.rename(path, path + ".bak")
 
 config.setdefault("mcpServers", {})["cortex"] = {
-    "command": venv_python,
-    "args": ["-m", "cortex.mcp_server"]
+    "command": cortex_bin,
+    "args": ["mcp"]
 }
 
 with open(path, "w") as f:
     json.dump(config, f, indent=2)
     f.write("\n")
 
-print(f"  -> wrote cortex entry to {path}")
+print(f"  -> {path}")
 '@
     $tmpScript = [System.IO.Path]::GetTempFileName() + ".py"
     $pyScript | Out-File -FilePath $tmpScript -Encoding utf8
     try {
-        & $venvPython $tmpScript $configFile $venvPython
+        & $script:VENV_PYTHON $tmpScript $configFile $venvCortex
     } finally {
         Remove-Item $tmpScript -ErrorAction SilentlyContinue
     }
@@ -153,6 +170,7 @@ function Print-Summary {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     Write-Ok "Cortex installed at: $(Get-Location)\$INSTALL_DIR"
     Write-Host ""
+
     if ($script:ConfiguredTools) {
         Write-Host "AI tools configured:"
         Write-Host $script:ConfiguredTools
@@ -160,13 +178,18 @@ function Print-Summary {
         Write-Warn "No AI tool config directories detected."
         Write-Host "  Add the following to your tool's MCP config manually:"
         Write-Host '  "cortex": {'
-        Write-Host "    `"command`": `"$($script:VENV_PYTHON)`","
-        Write-Host '    "args": ["-m", "cortex.mcp_server"]'
+        Write-Host "    `"command`": `"$($script:VENV_CORTEX)`","
+        Write-Host '    "args": ["mcp"]'
         Write-Host '  }'
     }
+
     Write-Host ""
-    Write-Host "Start the web UI (run from your project directory):"
-    Write-Host "  $($script:VENV_PYTHON) -m cortex.web_server"
+    Write-Host "Usage (run from any project directory):"
+    Write-Host "  cortex init        Initialize the knowledge graph for this project"
+    Write-Host "  cortex run         Start the web UI  ->  http://localhost:7842"
+    Write-Host "  cortex run --port 8000  (custom port)"
+    Write-Host ""
+    Write-Host "Note: open a new terminal for 'cortex' to be available on PATH." -ForegroundColor Yellow
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
@@ -176,6 +199,7 @@ function Print-Summary {
 
 $script:PYTHON_CMD     = ""
 $script:VENV_PYTHON    = ""
+$script:VENV_CORTEX    = ""
 $script:ConfiguredTools = ""
 
 Write-Host "Installing Cortex..."
@@ -184,6 +208,7 @@ Check-Git
 Check-Python
 Clone-Repo
 Setup-Venv
+Add-ToPath
 Configure-ClaudeCode
 Configure-Cursor
 Configure-Gemini

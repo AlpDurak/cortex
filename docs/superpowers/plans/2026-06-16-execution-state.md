@@ -36,8 +36,23 @@ To resume, tell Claude:
 > "Resume the Cortex UI implementation from the execution state file at `docs/superpowers/plans/2026-06-16-execution-state.md`"
 
 **Next action when resuming:**
-- Task 5 is committed at `7239d25` but spec review was interrupted — run spec review first, then code quality review, then proceed to Task 6.
-- Use Subagent-Driven Development skill (option 1) — dispatch implementer + spec reviewer + code quality reviewer per task.
+- If continuing implementation: proceed to final finishing/review flow.
+- If preparing a commit: first create a Cortex graph snapshot via MCP or `POST /api/commit`, per `AGENTS.md`.
+
+## Latest Verification (2026-06-16)
+
+- Cortex graph orientation works via `list_design_sections` when dependencies are installed.
+- Python syntax check passed: `python -m compileall core cortex tests`.
+- JavaScript syntax check passed: `node --check static/canvas.js`.
+- Test suite passed: `34 passed`.
+- Agent-browser UI smoke test passed:
+  - Export dropdown shows PNG Screenshot, JSON Graph, Semantic Triples.
+  - Search panel opens and returns matches for `auth`.
+  - Edge filter panel shows DEPENDS_ON, HOSTED_ON, MODIFIES, QUERIES, TALKS_TO.
+  - `window.CortexGraph` exports render, addNode, fitAll, highlightSearch, clearSearch, filterEdgesByLabel.
+  - Main graph canvas + minimap canvas are both present.
+  - Status bar showed 9 nodes and 7 edges.
+- Screenshot artifact: `docs/superpowers/plans/cortex-ui-verification.png`.
 
 ## What Was Built
 
@@ -69,7 +84,7 @@ To resume, tell Claude:
 - `toggleExportMenu()`, `exportGraph(format)`, `_download(blob, filename)` functions
 - Click-outside listener closes dropdown
 
-### Task 5 (`static/canvas.js`) — committed, review pending
+### Task 5 (`static/canvas.js`) — committed and verified
 - `REL_COLORS` extended to 11 entries
 - `NODE_ICONS` map with Lucide SVG path arrays for all 5 node types
 - `svgEsc()`, `buildNodeSVG()`, `buildNodeImage()`, `nodeWidth()` helpers

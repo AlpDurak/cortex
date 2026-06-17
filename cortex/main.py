@@ -182,6 +182,16 @@ def _cmd_mcp(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    # Make CLI output robust on non-UTF-8 consoles (e.g. Windows cp1254) so
+    # status glyphs (✓ ✗ ● ○ — used by 'cortex connect') never crash the
+    # process when stdout/stderr is piped or redirected. The MCP stdio
+    # transport uses the binary buffer, so this text-layer change is safe.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
+
     parser = argparse.ArgumentParser(
         prog="cortex",
         description="Cortex - local knowledge graph for software projects",

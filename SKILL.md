@@ -105,6 +105,8 @@ Content-Type: application/json
 
 Or use the `commit_snapshot` MCP tool if it is available in your tool list.
 
+The web server must be running (`cortex run`) for the HTTP endpoint to be reachable.
+
 This keeps the graph timeline in sync with git history.
 
 ---
