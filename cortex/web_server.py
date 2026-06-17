@@ -1,5 +1,5 @@
 """
-Cortex Web Server — FastAPI app that:
+Cortex Web Server - FastAPI app that:
   - Serves the static VS Code-style UI
   - Exposes REST endpoints the frontend uses to load graph data
   - Maintains a WebSocket hub for live graph push from write_system_design_node
@@ -319,7 +319,7 @@ def _build_app(project_root: Path) -> FastAPI:
         index = _STATIC / "index.html"
         if index.exists():
             return FileResponse(str(index))
-        return HTMLResponse("<h1>Cortex UI not found — run Phase 5 build.</h1>")
+        return HTMLResponse("<h1>Cortex UI not found.</h1>")
 
     return app
 

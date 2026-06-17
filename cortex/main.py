@@ -7,7 +7,7 @@ Usage:
     cortex run --port 8000   Custom port
     cortex run --host 0.0.0.0
     cortex run --root /path/to/project
-    cortex mcp               Start the MCP server (stdio — for AI tool configs)
+    cortex mcp               Start the MCP server (stdio transport for AI tool configs)
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _HOOK_MARKER = "# cortex-hook"
 
 _HOOK_SCRIPT = """\
 #!/bin/sh
-# cortex-hook — managed by 'cortex hook install'. Do not edit this line.
+# cortex-hook - managed by 'cortex hook install'. Do not edit this line.
 CORTEX_ROOT="$(git rev-parse --show-toplevel)"
 MSG="$(git log -1 --pretty=%s 2>/dev/null || echo 'git commit')"
 SHA="$(git log -1 --pretty=%H 2>/dev/null || echo '')"
@@ -61,9 +61,9 @@ def _cmd_hook(args: argparse.Namespace) -> None:
             hook_path.unlink()
             print(f"[Cortex] Hook removed from {hook_path}")
         elif hook_path.exists():
-            print(f"[Cortex] Hook at {hook_path} was not installed by Cortex — leaving it alone.")
+            print(f"[Cortex] Hook at {hook_path} was not installed by Cortex - leaving it alone.")
         else:
-            print("[Cortex] No Cortex hook found — nothing to remove.")
+            print("[Cortex] No Cortex hook found - nothing to remove.")
 
     elif args.hook_action == "status":
         if hook_path.exists() and _HOOK_MARKER in hook_path.read_text():
@@ -145,7 +145,7 @@ def _cmd_init(args: argparse.Namespace) -> None:
     if updated:
         print(f"  Migrated {updated} design node(s) to Decision Arc status vocabulary.")
     mgr.close()
-    print(f"Done — graph database ready at {root / '.cortex'}")
+    print(f"Done - graph database ready at {root / '.cortex'}")
     print()
     print("Tip: run 'cortex hook install' to enable automatic git commit snapshots.")
     print()
@@ -184,7 +184,7 @@ def _cmd_mcp(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="cortex",
-        description="Cortex — local knowledge graph for software projects",
+        description="Cortex - local knowledge graph for software projects",
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     sub.required = True
