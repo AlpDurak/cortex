@@ -97,17 +97,28 @@ _NODE_TABLES = [
 ]
 
 _REL_TABLES = [
-    "CREATE REL TABLE IF NOT EXISTS CONTAINS(FROM File TO File, FROM SystemDesign TO SystemDesign)",
-    "CREATE REL TABLE IF NOT EXISTS MODIFIES(FROM SystemDesign TO File)",
-    "CREATE REL TABLE IF NOT EXISTS DEPENDS_ON(FROM File TO File, weight DOUBLE)",
-    "CREATE REL TABLE IF NOT EXISTS QUERIES(FROM File TO Database, FROM Service TO Database, query_type STRING)",
-    "CREATE REL TABLE IF NOT EXISTS TALKS_TO(FROM File TO Service, FROM Service TO Service, protocol STRING)",
-    "CREATE REL TABLE IF NOT EXISTS HOSTED_ON(FROM Database TO Infrastructure, FROM Service TO Infrastructure)",
-    "CREATE REL TABLE IF NOT EXISTS IMPLEMENTS(FROM SystemDesign TO File)",
+    # File/Service/SystemDesign can contain each other
+    "CREATE REL TABLE IF NOT EXISTS CONTAINS(FROM File TO File, FROM SystemDesign TO SystemDesign, FROM Service TO Service)",
+    # Any node type can MODIFIES a File or Database
+    "CREATE REL TABLE IF NOT EXISTS MODIFIES(FROM SystemDesign TO File, FROM SystemDesign TO Database, FROM File TO File, FROM File TO Database, FROM Service TO File)",
+    # File-level dependencies
+    "CREATE REL TABLE IF NOT EXISTS DEPENDS_ON(FROM File TO File, FROM Service TO Service, FROM Service TO File, weight DOUBLE)",
+    # Anything that reads from a Database, Infrastructure, or Service (e.g. Prometheus scraping)
+    "CREATE REL TABLE IF NOT EXISTS QUERIES(FROM File TO Database, FROM Service TO Database, FROM SystemDesign TO Database, FROM Infrastructure TO Database, FROM Service TO Infrastructure, FROM Infrastructure TO Service, FROM Infrastructure TO Infrastructure, query_type STRING)",
+    # Service/File/SystemDesign can talk to Service or Infrastructure
+    "CREATE REL TABLE IF NOT EXISTS TALKS_TO(FROM File TO Service, FROM Service TO Service, FROM Service TO Infrastructure, FROM SystemDesign TO Service, FROM SystemDesign TO Infrastructure, protocol STRING)",
+    # Database/Service/Infrastructure hosted on Infrastructure
+    "CREATE REL TABLE IF NOT EXISTS HOSTED_ON(FROM Database TO Infrastructure, FROM Service TO Infrastructure, FROM Infrastructure TO Infrastructure)",
+    # SystemDesign/File can implement File/Service/Database/Infrastructure/SystemDesign
+    "CREATE REL TABLE IF NOT EXISTS IMPLEMENTS(FROM SystemDesign TO File, FROM SystemDesign TO Service, FROM SystemDesign TO Database, FROM SystemDesign TO Infrastructure, FROM File TO Service, FROM File TO Database, FROM File TO Infrastructure, FROM File TO SystemDesign)",
+    # Part-of hierarchy across SystemDesign nodes
     "CREATE REL TABLE IF NOT EXISTS PART_OF(FROM SystemDesign TO SystemDesign)",
-    "CREATE REL TABLE IF NOT EXISTS USES(FROM SystemDesign TO Service)",
-    "CREATE REL TABLE IF NOT EXISTS STORES_IN(FROM SystemDesign TO Database)",
-    "CREATE REL TABLE IF NOT EXISTS RUNS_ON(FROM SystemDesign TO Infrastructure)",
+    # SystemDesign/Service uses Service or Infrastructure
+    "CREATE REL TABLE IF NOT EXISTS USES(FROM SystemDesign TO Service, FROM SystemDesign TO Infrastructure, FROM Service TO Service, FROM Service TO Infrastructure)",
+    # SystemDesign/Service/File stores data in Database
+    "CREATE REL TABLE IF NOT EXISTS STORES_IN(FROM SystemDesign TO Database, FROM Service TO Database, FROM File TO Database)",
+    # SystemDesign/Service/Database/File/Infrastructure runs on Infrastructure
+    "CREATE REL TABLE IF NOT EXISTS RUNS_ON(FROM SystemDesign TO Infrastructure, FROM Service TO Infrastructure, FROM Database TO Infrastructure, FROM File TO Infrastructure, FROM Infrastructure TO Infrastructure)",
     (
         "CREATE REL TABLE IF NOT EXISTS MEMBER_OF("
         "FROM File TO NodeGroup, FROM SystemDesign TO NodeGroup, "
