@@ -260,10 +260,7 @@ def _build_app(project_root: Path) -> FastAPI:
     @app.post("/api/export")
     async def api_export(body: dict[str, Any] = {}):
         fmt = body.get("format", "graphml")
-        try:
-            from core.export import export_graphml, export_obsidian, export_wiki, export_svg
-        except ImportError:
-            return JSONResponse({"error": "Export module not yet installed"}, status_code=501)
+        from core.export import export_graphml, export_obsidian, export_wiki, export_svg
         if fmt == "graphml":
             return Response(content=export_graphml(mgr.conn), media_type="application/xml")
         elif fmt == "svg":
