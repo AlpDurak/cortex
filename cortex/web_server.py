@@ -83,8 +83,20 @@ def _build_app(project_root: Path) -> FastAPI:
 
     app = FastAPI(title="Cortex", docs_url=None, redoc_url=None)
 
-    # Serve static files (JS, CSS, etc.)
+    # Serve static files with no-cache headers so JS updates are picked up immediately
     if _STATIC.exists():
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        class _NoCacheStatic(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)
+                if request.url.path.startswith("/static/"):
+                    response.headers["Cache-Control"] = "no-store"
+                    response.headers.pop("ETag", None)
+                    response.headers.pop("Last-Modified", None)
+                return response
+
+        app.add_middleware(_NoCacheStatic)
         app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 
     # ------------------------------------------------------------------

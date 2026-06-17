@@ -84,7 +84,7 @@
       'background-width':      '14px',
       'background-height':     '14px',
       'background-position-x': '8px',
-      'background-position-y': 'center',
+      'background-position-y': '50%',
       'background-clip':       'none',
     };
 
@@ -318,14 +318,15 @@
     if (typeof cytoscapeDagre !== 'undefined') {
       return {
         name:    'dagre',
-        rankDir: 'TB',
-        nodeSep: 60,
-        rankSep: 80,
-        padding: 50,
+        rankDir: 'LR',
+        nodeSep: 20,
+        rankSep: 60,
+        padding: 40,
         animate: true,
         animationDuration: 500,
         nodeDimensionsIncludeLabels: true,
         ranker:  'network-simplex',
+        align:   'UL',
       };
     }
     if (typeof cytoscapeCoseBilkent !== 'undefined') {
