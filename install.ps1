@@ -1,5 +1,5 @@
 # Cortex installer — Windows (PowerShell 5.1+)
-# Clones cortex into .\cortex\, creates a venv, installs deps,
+# Clones cortex into ~/.cortex/cortex, creates a venv, installs deps,
 # adds the cortex CLI to the user PATH, and writes MCP config entries
 # for detected AI tools.
 #
@@ -8,8 +8,9 @@
 
 $ErrorActionPreference = "Stop"
 
-$REPO_URL    = "https://github.com/AlpDurak/cortex.git"
-$INSTALL_DIR = "cortex"
+$REPO_URL     = "https://github.com/AlpDurak/cortex.git"
+$INSTALL_ROOT = Join-Path $env:USERPROFILE ".cortex"
+$INSTALL_DIR  = Join-Path $INSTALL_ROOT "cortex"
 
 function Write-Ok($msg)   { Write-Host "OK $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "!  $msg" -ForegroundColor Yellow }
@@ -46,14 +47,17 @@ function Check-Python {
 # ---------------------------------------------------------------------------
 
 function Clone-Repo {
+    New-Item -ItemType Directory -Force -Path $INSTALL_ROOT | Out-Null
     if (Test-Path "$INSTALL_DIR\.git") {
         Write-Warn "Directory '$INSTALL_DIR' already exists. Pulling latest..."
-        git -C $INSTALL_DIR pull --ff-only
+        git -C "$INSTALL_DIR" pull --ff-only
+        if ($LASTEXITCODE -ne 0) { Write-Fail "Could not update existing Cortex repository at $INSTALL_DIR" }
     } else {
-        Write-Host "Cloning cortex into .\$INSTALL_DIR\ ..."
-        git clone $REPO_URL $INSTALL_DIR
+        Write-Host "Cloning cortex into $INSTALL_DIR ..."
+        git clone $REPO_URL "$INSTALL_DIR"
+        if ($LASTEXITCODE -ne 0) { Write-Fail "Could not clone Cortex into $INSTALL_DIR" }
     }
-    Write-Ok "Repository ready at $(Get-Location)\$INSTALL_DIR"
+    Write-Ok "Repository ready at $INSTALL_DIR"
 }
 
 # ---------------------------------------------------------------------------
@@ -62,27 +66,77 @@ function Clone-Repo {
 
 function Setup-Venv {
     Write-Host "Creating virtual environment..."
-    & $script:PYTHON_CMD -m venv "$INSTALL_DIR\.venv"
-    $script:VENV_PYTHON = "$(Get-Location)\$INSTALL_DIR\.venv\Scripts\python.exe"
-    $script:VENV_CORTEX = "$(Get-Location)\$INSTALL_DIR\.venv\Scripts\cortex.exe"
+    & $script:PYTHON_CMD -m venv --without-pip "$INSTALL_DIR\.venv"
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Could not create virtual environment at $INSTALL_DIR\.venv" }
+
+    $script:VENV_PYTHON = Join-Path $INSTALL_DIR ".venv\Scripts\python.exe"
+    $script:VENV_CORTEX = Join-Path $INSTALL_DIR ".venv\Scripts\cortex.exe"
+
+    & $script:VENV_PYTHON -m ensurepip --upgrade --default-pip
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Could not bootstrap pip in $INSTALL_DIR\.venv" }
+
     & $script:VENV_PYTHON -m pip install --quiet --upgrade pip
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Could not upgrade pip in $INSTALL_DIR\.venv" }
+
     & $script:VENV_PYTHON -m pip install --quiet -e "$INSTALL_DIR\"
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Could not install Cortex dependencies" }
+
     Write-Ok "Dependencies installed"
 }
 
 # ---------------------------------------------------------------------------
-# Add venv Scripts to user PATH so `cortex` works from any terminal
+# Add venv Scripts to PATH so `cortex` works from any terminal
 # ---------------------------------------------------------------------------
 
+function Notify-PathChanged {
+    try {
+        $signature = @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class CortexNativeMethods {
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint Msg,
+        UIntPtr wParam,
+        string lParam,
+        uint fuFlags,
+        uint uTimeout,
+        out UIntPtr lpdwResult);
+}
+'@
+        Add-Type -TypeDefinition $signature -ErrorAction SilentlyContinue
+        $result = [UIntPtr]::Zero
+        [CortexNativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, "Environment", 0x0002, 5000, [ref]$result) | Out-Null
+    } catch {
+        Write-Warn "PATH was updated, but Windows environment notification failed. Open a new terminal if needed."
+    }
+}
+
 function Add-ToPath {
-    $venvScripts = "$(Get-Location)\$INSTALL_DIR\.venv\Scripts"
+    $venvScripts = Join-Path $INSTALL_DIR ".venv\Scripts"
     $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-    if ($userPath -like "*$venvScripts*") {
+    if (-not $userPath) { $userPath = "" }
+
+    $userPathItems = $userPath -split ";" | Where-Object { $_ }
+    if ($userPathItems -contains $venvScripts) {
         Write-Ok "PATH already contains venv Scripts"
     } else {
-        [Environment]::SetEnvironmentVariable("PATH", "$userPath;$venvScripts", "User")
+        if ([string]::IsNullOrWhiteSpace($userPath)) {
+            $newUserPath = $venvScripts
+        } else {
+            $newUserPath = "$userPath;$venvScripts"
+        }
+        [Environment]::SetEnvironmentVariable("PATH", $newUserPath, "User")
         Write-Ok "Added to user PATH: $venvScripts"
-        Write-Host "  Restart your terminal (or open a new one) for 'cortex' to be available." -ForegroundColor Yellow
+        Notify-PathChanged
+    }
+
+    $processPathItems = $env:PATH -split ";" | Where-Object { $_ }
+    if ($processPathItems -notcontains $venvScripts) {
+        $env:PATH = "$venvScripts;$env:PATH"
+        Write-Ok "Added to current PowerShell PATH"
     }
 }
 
@@ -168,7 +222,7 @@ function Configure-Codex {
 function Print-Summary {
     Write-Host ""
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    Write-Ok "Cortex installed at: $(Get-Location)\$INSTALL_DIR"
+    Write-Ok "Cortex installed at: $INSTALL_DIR"
     Write-Host ""
 
     if ($script:ConfiguredTools) {

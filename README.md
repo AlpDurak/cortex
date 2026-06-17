@@ -25,8 +25,9 @@ curl -sSL https://raw.githubusercontent.com/AlpDurak/cortex/master/install.sh | 
 irm https://raw.githubusercontent.com/AlpDurak/cortex/master/install.ps1 | iex
 ```
 
-The installer clones Cortex into `./cortex/`, creates a Python venv, installs
-dependencies, adds the `cortex` command to your PATH, and auto-configures any
+The installer clones Cortex into `~/.cortex/cortex`, creates a Python venv,
+installs dependencies, adds the `cortex` command to your PATH for new terminals
+(CMD/PowerShell on Windows, bash/zsh on macOS and Linux), and auto-configures any
 of these AI tools it finds on your machine:
 
 - Claude Code (`~/.claude/settings.json`)

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Cortex installer — macOS / Linux
-# Clones cortex into ./cortex/, creates a venv, installs deps,
+# Clones cortex into ~/.cortex/cortex, creates a venv, installs deps,
 # links the `cortex` CLI globally, and writes MCP config entries
 # for detected AI tools.
 #
@@ -12,7 +12,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 REPO_URL="https://github.com/AlpDurak/cortex.git"
-INSTALL_DIR="cortex"
+INSTALL_ROOT="$HOME/.cortex"
+INSTALL_DIR="$INSTALL_ROOT/cortex"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -55,14 +56,15 @@ check_python() {
 # ---------------------------------------------------------------------------
 
 clone_repo() {
+  mkdir -p "$INSTALL_ROOT"
   if [ -d "$INSTALL_DIR/.git" ]; then
     warn "Directory '$INSTALL_DIR' already exists. Pulling latest..."
     git -C "$INSTALL_DIR" pull --ff-only
   else
-    echo "Cloning cortex into ./$INSTALL_DIR/ ..."
+    echo "Cloning cortex into $INSTALL_DIR ..."
     git clone "$REPO_URL" "$INSTALL_DIR"
   fi
-  ok "Repository ready at $(pwd)/$INSTALL_DIR"
+  ok "Repository ready at $INSTALL_DIR"
 }
 
 # ---------------------------------------------------------------------------
@@ -71,9 +73,10 @@ clone_repo() {
 
 setup_venv() {
   echo "Creating virtual environment..."
-  "$PYTHON_CMD" -m venv "$INSTALL_DIR/.venv"
-  VENV_PYTHON="$(pwd)/$INSTALL_DIR/.venv/bin/python"
-  VENV_CORTEX="$(pwd)/$INSTALL_DIR/.venv/bin/cortex"
+  "$PYTHON_CMD" -m venv --without-pip "$INSTALL_DIR/.venv"
+  VENV_PYTHON="$INSTALL_DIR/.venv/bin/python"
+  VENV_CORTEX="$INSTALL_DIR/.venv/bin/cortex"
+  "$VENV_PYTHON" -m ensurepip --upgrade --default-pip
   "$VENV_PYTHON" -m pip install --quiet --upgrade pip
   "$VENV_PYTHON" -m pip install --quiet -e "$INSTALL_DIR/"
   ok "Dependencies installed"
@@ -83,6 +86,39 @@ setup_venv() {
 # Link the `cortex` CLI onto PATH
 # ---------------------------------------------------------------------------
 
+ensure_path_file() {
+  local file="$1"
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+
+  if grep -Fq "CORTEX PATH" "$file"; then
+    return
+  fi
+
+  if grep -Fq '$HOME/.local/bin' "$file" || grep -Fq "$HOME/.local/bin" "$file"; then
+    return
+  fi
+
+  cat >>"$file" <<'EOF'
+
+# >>> CORTEX PATH >>>
+export PATH="$HOME/.local/bin:$PATH"
+# <<< CORTEX PATH <<<
+EOF
+}
+
+ensure_shell_path() {
+  export PATH="$HOME/.local/bin:$PATH"
+
+  ensure_path_file "$HOME/.profile"
+  ensure_path_file "$HOME/.bashrc"
+  ensure_path_file "$HOME/.bash_profile"
+  ensure_path_file "$HOME/.zshrc"
+  ensure_path_file "$HOME/.zprofile"
+
+  ok "Added ~/.local/bin to shell startup files"
+}
+
 link_cli() {
   mkdir -p "$HOME/.local/bin"
   ln -sf "$VENV_CORTEX" "$HOME/.local/bin/cortex"
@@ -91,11 +127,7 @@ link_cli() {
   case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
     *)
-      warn "~/.local/bin is not on your PATH."
-      echo "  Add this line to your shell config (~/.bashrc, ~/.zshrc, etc.):"
-      echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-      echo "  Then restart your shell or run:  source ~/.bashrc"
-      PATH_WARNING=1
+      ensure_shell_path
       ;;
   esac
 }
@@ -171,7 +203,7 @@ configure_codex() {
 print_summary() {
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  ok "Cortex installed at: $(pwd)/$INSTALL_DIR"
+  ok "Cortex installed at: $INSTALL_DIR"
   echo ""
 
   if [ -n "$CONFIGURED_TOOLS" ]; then
@@ -193,9 +225,7 @@ print_summary() {
   echo "  cortex run --port 8000  (custom port)"
   echo ""
 
-  if [ -n "${PATH_WARNING:-}" ]; then
-    warn "Remember to add ~/.local/bin to your PATH (see above) before using 'cortex'."
-  fi
+  echo "Note: open a new terminal for 'cortex' to be available on PATH."
 
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
@@ -208,7 +238,6 @@ PYTHON_CMD=""
 VENV_PYTHON=""
 VENV_CORTEX=""
 CONFIGURED_TOOLS=""
-PATH_WARNING=""
 
 echo "Installing Cortex..."
 echo ""
