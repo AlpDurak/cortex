@@ -92,8 +92,10 @@ def _build_app(project_root: Path) -> FastAPI:
                 response = await call_next(request)
                 if request.url.path.startswith("/static/"):
                     response.headers["Cache-Control"] = "no-store"
-                    response.headers.pop("ETag", None)
-                    response.headers.pop("Last-Modified", None)
+                    if "ETag" in response.headers:
+                        del response.headers["ETag"]
+                    if "Last-Modified" in response.headers:
+                        del response.headers["Last-Modified"]
                 return response
 
         app.add_middleware(_NoCacheStatic)

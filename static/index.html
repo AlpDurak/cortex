@@ -10,335 +10,310 @@
   <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
   <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
   <style>
-    /* ------------------------------------------------------------------ */
-    /* Reset & base                                                         */
-    /* ------------------------------------------------------------------ */
+    /* ── Reset ────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* ── Design tokens ────────────────────────────────────────────────── */
     :root {
-      --bg:           #1e1e1e;
-      --bg-sidebar:   #252526;
-      --bg-panel:     #2d2d2d;
-      --bg-hover:     #2a2d2e;
-      --bg-active:    #37373d;
-      --border:       #3c3c3c;
-      --text:         #cccccc;
-      --text-muted:   #858585;
-      --text-bright:  #ffffff;
-      --accent:       #0e639c;
-      --accent-hover: #1177bb;
-
-      /* diff colours (Git conventions) */
-      --diff-added-bg:    #d4edda;
-      --diff-added-bd:    #28a745;
-      --diff-deleted-bg:  #f8d7da;
-      --diff-deleted-bd:  #dc3545;
-      --diff-modified-bg: #fff3cd;
-      --diff-modified-bd: #ffc107;
-
-      --icon-bar-w:  48px;
-      --timeline-w:  220px;
-      --inspector-h: 220px;
+      --bg:          #09090b;
+      --bg-2:        #0d0d12;
+      --surface:     #111116;
+      --surface-2:   #18181f;
+      --surface-3:   #1f1f28;
+      --border:      #27272a;
+      --border-sub:  #1c1c20;
+      --text:        #e4e4e7;
+      --text-muted:  #71717a;
+      --text-dim:    #3f3f46;
+      --accent:      #6366f1;
+      --accent-h:    #818cf8;
+      --accent-dim:  rgba(99,102,241,0.12);
+      --c-svc:       #818cf8;
+      --c-db:        #34d399;
+      --c-infra:     #fbbf24;
+      --c-file:      #38bdf8;
+      --c-sys:       #c084fc;
+      --diff-add:    #22c55e;
+      --diff-del:    #ef4444;
+      --diff-mod:    #fbbf24;
+      --rail-w:      44px;
+      --sidebar-w:   224px;
       --header-h:    36px;
+      --statusbar-h: 22px;
+      --mono: 'Geist Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
     }
 
-    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px; line-height: 1.5;
+    }
 
-    /* ------------------------------------------------------------------ */
-    /* Header bar                                                           */
-    /* ------------------------------------------------------------------ */
+    /* ── Header ────────────────────────────────────────────────────────── */
     #header {
       position: fixed; top: 0; left: 0; right: 0;
       height: var(--header-h);
-      background: #323233;
-      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border-sub);
       display: flex; align-items: center; gap: 10px;
-      padding: 0 14px;
-      z-index: 100;
-      user-select: none;
+      padding: 0 12px; z-index: 100; user-select: none;
     }
-    #header-logo { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
-    #header-logo img { width: 20px; height: 20px; object-fit: contain; }
-    #header-logo .logo-fallback {
-      width: 20px; height: 20px; border-radius: 4px;
+    #header-logo { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    #header-logo img { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
+    .logo-fallback {
+      width: 22px; height: 22px; border-radius: 5px;
       background: var(--accent); color: #fff;
       font-size: 11px; font-weight: 700;
       display: flex; align-items: center; justify-content: center;
     }
-    #header-title { font-size: 13px; font-weight: 600; color: var(--text-bright); letter-spacing: 0.3px; }
-    #header-project { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
-    #header-spacer { flex: 1; }
-    #header-commit-btn {
-      background: var(--accent); color: #fff;
-      border: none; border-radius: 4px;
-      padding: 4px 12px; font-size: 12px; cursor: pointer;
-      transition: background 0.15s;
-    }
-    #header-commit-btn:hover { background: var(--accent-hover); }
+    #header-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+    #header-sep   { color: var(--text-dim); font-size: 14px; margin: 0 1px; }
+    #header-project { font-size: 12px; color: var(--text-muted); }
+    #header-spacer  { flex: 1; }
 
-    /* ------------------------------------------------------------------ */
-    /* Shell layout                                                         */
-    /* ------------------------------------------------------------------ */
+    .header-btn {
+      height: 26px; padding: 0 10px;
+      background: transparent; color: var(--text-muted);
+      border: 1px solid var(--border-sub); border-radius: 5px;
+      font-size: 11.5px; cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+      transition: color .12s, border-color .12s, background .12s;
+    }
+    .header-btn:hover { color: var(--text); border-color: var(--border); background: var(--surface-2); }
+    .header-btn svg { width: 12px; height: 12px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    #header-commit-btn {
+      height: 26px; padding: 0 12px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 5px;
+      font-size: 11.5px; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+      transition: background .12s;
+    }
+    #header-commit-btn:hover { background: var(--accent-h); }
+    #header-commit-btn svg { width: 12px; height: 12px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── Shell ──────────────────────────────────────────────────────────── */
     #shell {
       position: fixed;
-      top: var(--header-h); bottom: 0; left: 0; right: 0;
+      top: var(--header-h); bottom: var(--statusbar-h);
+      left: 0; right: 0;
       display: flex;
     }
 
-    /* ------------------------------------------------------------------ */
-    /* Icon dock (far left — VS Code activity bar)                         */
-    /* ------------------------------------------------------------------ */
+    /* ── Activity rail ──────────────────────────────────────────────────── */
     #icon-dock {
-      width: var(--icon-bar-w);
-      background: var(--bg-sidebar);
-      border-right: 1px solid var(--border);
+      width: var(--rail-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border-sub);
       display: flex; flex-direction: column; align-items: center;
-      padding-top: 8px; gap: 4px;
-      flex-shrink: 0;
+      padding-top: 6px; gap: 2px; flex-shrink: 0;
     }
     .dock-btn {
-      width: 36px; height: 36px;
-      border-radius: 6px; border: none;
-      background: transparent; color: var(--text-muted);
+      width: 32px; height: 32px; border-radius: 7px; border: none;
+      background: transparent; color: var(--text-dim);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: background 0.1s, color 0.1s;
-      position: relative;
+      transition: background .1s, color .1s; position: relative;
     }
-    .dock-btn:hover { background: var(--bg-hover); color: var(--text); }
-    .dock-btn.active { color: var(--text-bright); }
+    .dock-btn:hover { background: var(--surface-2); color: var(--text-muted); }
+    .dock-btn.active { color: var(--text); }
     .dock-btn.active::before {
-      content: '';
-      position: absolute; left: -1px; top: 6px; bottom: 6px;
-      width: 2px; border-radius: 2px;
-      background: var(--text-bright);
+      content: ''; position: absolute; left: -1px; top: 7px; bottom: 7px;
+      width: 2px; border-radius: 1px; background: var(--accent);
     }
-    .dock-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .dock-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
-    /* ------------------------------------------------------------------ */
-    /* Secondary sidebar (timeline / inspector panels)                     */
-    /* ------------------------------------------------------------------ */
+    /* ── Sidebar ────────────────────────────────────────────────────────── */
     #secondary-sidebar {
-      width: var(--timeline-w);
-      background: var(--bg-sidebar);
-      border-right: 1px solid var(--border);
-      display: flex; flex-direction: column;
-      flex-shrink: 0;
-      overflow: hidden;
+      width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border-sub);
+      display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden;
     }
-
     .panel-header {
-      padding: 10px 14px 6px;
-      font-size: 11px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.8px;
-      color: var(--text-muted);
-      flex-shrink: 0;
+      padding: 9px 12px 6px;
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: var(--text-dim); flex-shrink: 0;
     }
 
-    /* --- Timeline list --- */
-    #timeline-panel { flex: 0 0 auto; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; }
-    #timeline-list { list-style: none; padding: 0 0 8px; }
+    /* Timeline */
+    #timeline-panel { flex: 0 0 auto; border-bottom: 1px solid var(--border-sub); display: flex; flex-direction: column; }
+    #timeline-list  { list-style: none; padding: 0 0 4px; }
     #timeline-list li {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 14px; cursor: pointer;
-      transition: background 0.1s;
-      border-left: 3px solid transparent;
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 5px 12px; cursor: pointer;
+      transition: background .1s; border-left: 2px solid transparent;
     }
-    #timeline-list li:hover { background: var(--bg-hover); }
-    #timeline-list li.selected {
-      background: var(--bg-active);
-      border-left-color: var(--accent);
-    }
-    .tl-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      border: 2px solid var(--text-muted);
-      flex-shrink: 0;
-    }
+    #timeline-list li:hover    { background: var(--surface-2); }
+    #timeline-list li.selected { background: var(--surface-3); border-left-color: var(--accent); }
+    .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid var(--text-dim); margin-top: 3px; }
     li.selected .tl-dot { border-color: var(--accent); background: var(--accent); }
-    li:first-child .tl-dot { border-color: #28a745; background: #28a745; }
-    .tl-label { font-size: 12px; color: var(--text); line-height: 1.3; }
-    .tl-ts { font-size: 10px; color: var(--text-muted); }
+    li:first-child .tl-dot { border-color: var(--diff-add); background: var(--diff-add); }
+    .tl-label { font-size: 11.5px; color: var(--text); line-height: 1.3; }
+    .tl-ts    { font-size: 10px; color: var(--text-dim); font-family: var(--mono); margin-top: 1px; }
     #diff-banner {
-      display: none;
-      margin: 6px 10px;
-      padding: 5px 10px;
-      background: #2a2d2e;
-      border: 1px solid var(--diff-modified-bd);
-      border-radius: 4px;
-      font-size: 11px; color: var(--diff-modified-bd);
-      text-align: center;
+      display: none; margin: 4px 8px 6px; padding: 4px 8px; border-radius: 4px;
+      background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25);
+      font-size: 10px; color: var(--diff-mod); font-family: var(--mono);
     }
     #diff-banner.visible { display: block; }
 
-    /* --- Node inspector --- */
-    #inspector-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
-    #inspector-content { padding: 8px 14px 16px; flex: 1; }
-    #inspector-content .empty-msg { color: var(--text-muted); font-style: italic; font-size: 12px; margin-top: 4px; }
-    .inspector-field { margin-bottom: 10px; }
-    .inspector-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: 3px; }
-    .inspector-value { font-size: 12px; color: var(--text-bright); word-break: break-all; }
-    .inspector-badge {
-      display: inline-block;
-      padding: 1px 8px; border-radius: 10px;
-      font-size: 11px; font-weight: 600;
-      background: var(--accent); color: #fff;
-    }
+    /* Inspector */
+    #inspector-panel   { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+    #inspector-content { padding: 6px 12px 14px; flex: 1; }
+    #inspector-content .empty-msg { color: var(--text-dim); font-size: 11px; margin-top: 2px; font-style: italic; }
+    .inspector-field   { margin-bottom: 9px; }
+    .inspector-label   { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); margin-bottom: 2px; }
+    .inspector-value   { font-size: 11.5px; color: var(--text); word-break: break-all; line-height: 1.4; }
+    .inspector-badge   { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 99px; font-size: 10.5px; font-weight: 600; }
     .inspector-connections { list-style: none; }
-    .inspector-connections li {
-      font-size: 11px; color: var(--text);
-      padding: 3px 0;
-      border-bottom: 1px solid var(--border);
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
-    }
+    .inspector-connections li { font-size: 10.5px; color: var(--text-muted); padding: 3px 0; border-bottom: 1px solid var(--border-sub); font-family: var(--mono); line-height: 1.3; }
+    .inspector-connections li:last-child { border-bottom: none; }
 
-    /* ------------------------------------------------------------------ */
-    /* Main content area                                                    */
-    /* ------------------------------------------------------------------ */
-    #main {
-      flex: 1;
-      display: flex; flex-direction: column;
-      overflow: hidden;
-      background: var(--bg);
+    /* Search */
+    #search-panel { display: none; flex-direction: column; flex-shrink: 0; border-bottom: 1px solid var(--border-sub); }
+    .search-input-wrap { padding: 0 10px 8px; }
+    #search-input {
+      width: 100%; padding: 5px 9px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text); font-size: 11.5px; outline: none;
+      transition: border-color .12s;
     }
+    #search-input:focus { border-color: var(--accent); }
+    #search-input::placeholder { color: var(--text-dim); }
+    #search-results { list-style: none; margin-top: 4px; max-height: 180px; overflow-y: auto; }
+    #search-results li { padding: 4px 4px; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: var(--mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #search-results li:hover { background: var(--surface-3); color: var(--text); }
 
-    /* Canvas takes all remaining space */
-    #canvas-wrapper {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-    }
+    /* Filter */
+    #filter-panel  { display: none; flex-direction: column; flex-shrink: 0; border-bottom: 1px solid var(--border-sub); }
+    #filter-toggles { padding: 4px 10px 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .filter-pill { padding: 2px 9px; border-radius: 99px; font-size: 10.5px; cursor: pointer; font-family: var(--mono); border: 1px solid var(--border); color: var(--text-muted); background: transparent; transition: all .12s; }
+    .filter-pill.active { background: var(--accent-dim); color: var(--accent-h); border-color: rgba(99,102,241,0.3); }
 
-    #graph-canvas {
-      width: 100%; height: 100%;
-      background: var(--bg);
-    }
+    /* Vitals */
+    #vitals-panel { display: none; flex-direction: column; flex: 1; overflow-y: auto; }
+    #vitals-content { padding: 6px 12px 14px; }
 
-    /* Status bar */
+    /* ── Canvas ──────────────────────────────────────────────────────────── */
+    #main          { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+    #canvas-wrapper { flex: 1; position: relative; overflow: hidden; }
+    #graph-canvas  { width: 100%; height: 100%; background: var(--bg); }
+
+    /* ── Status bar ──────────────────────────────────────────────────────── */
     #status-bar {
-      height: 22px;
-      background: var(--accent);
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: var(--statusbar-h);
+      background: var(--surface);
+      border-top: 1px solid var(--border-sub);
       display: flex; align-items: center;
-      padding: 0 12px; gap: 16px;
-      font-size: 11px; color: #fff;
-      flex-shrink: 0;
+      padding: 0 12px; gap: 14px;
+      font-size: 10.5px; color: var(--text-dim);
+      font-family: var(--mono); z-index: 50;
     }
-    #status-ws { display: flex; align-items: center; gap: 4px; }
-    #ws-dot { width: 6px; height: 6px; border-radius: 50%; background: #ccc; }
-    #ws-dot.connected { background: #4cfc82; }
-    #ws-dot.error     { background: #f55; }
+    #status-ws  { display: flex; align-items: center; gap: 5px; }
+    #ws-dot     { width: 5px; height: 5px; border-radius: 50%; background: var(--text-dim); }
+    #ws-dot.connected { background: var(--diff-add); box-shadow: 0 0 4px var(--diff-add); }
+    #ws-dot.error     { background: var(--diff-del); }
+    #ws-label   { color: var(--text-muted); }
+    .status-sep { color: var(--border); }
+    #status-slot { color: var(--accent); }
 
-    /* ------------------------------------------------------------------ */
-    /* Commit modal                                                         */
-    /* ------------------------------------------------------------------ */
+    /* ── Export menu ─────────────────────────────────────────────────────── */
+    #export-menu {
+      display: none; position: absolute; right: 0; top: 32px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
+      min-width: 148px; z-index: 200; overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
+    }
+    .export-item { padding: 8px 12px; font-size: 11.5px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; gap: 7px; transition: background .1s, color .1s; }
+    .export-item:hover { background: var(--surface-3); color: var(--text); }
+    .export-item svg { width: 12px; height: 12px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── Commit modal ────────────────────────────────────────────────────── */
     #commit-modal-bg {
       display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.6); z-index: 200;
-      align-items: center; justify-content: center;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(4px);
+      z-index: 200; align-items: center; justify-content: center;
     }
     #commit-modal-bg.visible { display: flex; }
     #commit-modal {
-      background: var(--bg-panel); border: 1px solid var(--border);
-      border-radius: 8px; padding: 24px; width: 380px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 22px 22px 18px; width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.6), 0 4px 16px rgba(0,0,0,.4);
     }
-    #commit-modal h3 { font-size: 14px; color: var(--text-bright); margin-bottom: 14px; }
+    #commit-modal h3 { font-size: 13.5px; color: var(--text); margin-bottom: 12px; font-weight: 600; }
     #commit-msg-input {
       width: 100%; padding: 8px 10px;
-      background: var(--bg); border: 1px solid var(--border);
-      border-radius: 4px; color: var(--text-bright);
-      font-size: 13px; outline: none;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-size: 12.5px; outline: none; transition: border-color .12s;
     }
     #commit-msg-input:focus { border-color: var(--accent); }
-    .modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
-    .btn-primary {
-      background: var(--accent); color: #fff;
-      border: none; border-radius: 4px;
-      padding: 6px 16px; font-size: 13px; cursor: pointer;
-    }
-    .btn-primary:hover { background: var(--accent-hover); }
-    .btn-secondary {
-      background: transparent; color: var(--text);
-      border: 1px solid var(--border); border-radius: 4px;
-      padding: 6px 16px; font-size: 13px; cursor: pointer;
-    }
-    .btn-secondary:hover { background: var(--bg-active); }
+    #commit-msg-input::placeholder { color: var(--text-dim); }
+    .modal-actions { display: flex; gap: 6px; margin-top: 12px; justify-content: flex-end; }
+    .btn-primary  { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .12s; }
+    .btn-primary:hover  { background: var(--accent-h); }
+    .btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; transition: background .12s, color .12s; }
+    .btn-secondary:hover { background: var(--surface-3); color: var(--text); }
 
-    /* Search result items */
-    #search-results li {
-      padding: 4px 6px; border-radius: 4px; cursor: pointer;
-      font-size: 11px; font-family: 'Cascadia Code', 'Fira Code', monospace;
-      color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    #search-results li:hover { background: var(--bg-hover); }
-
-    /* Filter toggle pills */
-    .filter-pill {
-      padding: 2px 10px; border-radius: 10px; font-size: 11px; cursor: pointer;
-      border: 1px solid var(--border); color: var(--text); background: var(--bg-panel);
-      transition: background 0.1s, color 0.1s;
-    }
-    .filter-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-    /* Scrollbar styling */
-    ::-webkit-scrollbar { width: 6px; }
+    /* ── Scrollbars ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #777; }
-
-    .export-item {
-      padding: 8px 14px; font-size: 12px; cursor: pointer; color: var(--text);
-    }
-    .export-item:hover { background: var(--bg-hover); }
+    ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border); }
   </style>
 </head>
 <body>
 
-<!-- ================================================================== -->
-<!-- HEADER                                                               -->
-<!-- ================================================================== -->
+<!-- HEADER -->
 <div id="header">
   <div id="header-logo">
     <div class="logo-fallback" id="logo-fallback">C</div>
     <img id="logo-img" src="" alt="logo" style="display:none" />
   </div>
   <span id="header-title">Cortex</span>
+  <span id="header-sep">/</span>
   <span id="header-project"></span>
   <div id="header-spacer"></div>
+
   <div style="position:relative">
-    <button id="export-btn" onclick="toggleExportMenu()" style="
-      background:var(--bg-panel);color:var(--text);border:1px solid var(--border);
-      border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;
-      display:flex;align-items:center;gap:5px">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
+    <button class="header-btn" id="export-btn" onclick="toggleExportMenu()">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Export
     </button>
-    <div id="export-menu" style="
-      display:none;position:absolute;right:0;top:32px;
-      background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;
-      min-width:140px;z-index:200;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.4)">
-      <div class="export-item" onclick="exportGraph('png')">PNG Screenshot</div>
-      <div class="export-item" onclick="exportGraph('json')">JSON Graph</div>
-      <div class="export-item" onclick="exportGraph('triples')">Semantic Triples</div>
+    <div id="export-menu">
+      <div class="export-item" onclick="exportGraph('png')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        PNG Screenshot
+      </div>
+      <div class="export-item" onclick="exportGraph('json')">
+        <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        JSON Graph
+      </div>
+      <div class="export-item" onclick="exportGraph('triples')">
+        <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Semantic Triples
+      </div>
     </div>
   </div>
-  <button id="header-commit-btn" onclick="openCommitModal()">+ Commit Snapshot</button>
+
+  <button id="header-commit-btn" onclick="openCommitModal()">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg>
+    Commit
+  </button>
 </div>
 
-<!-- ================================================================== -->
-<!-- SHELL                                                                -->
-<!-- ================================================================== -->
+<!-- SHELL -->
 <div id="shell">
 
-  <!-- ICON DOCK -->
+  <!-- ACTIVITY RAIL -->
   <div id="icon-dock">
     <button class="dock-btn active" id="btn-timeline" title="Timeline" onclick="setActivePanel('timeline')">
-      <!-- Clock icon -->
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16.5 12"/></svg>
     </button>
-    <button class="dock-btn" id="btn-search" title="Search Nodes" onclick="setActivePanel('search')">
-      <!-- Search icon -->
+    <button class="dock-btn" id="btn-search" title="Search" onclick="setActivePanel('search')">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.65" y1="16.65" x2="21" y2="21"/></svg>
     </button>
     <button class="dock-btn" id="btn-filter" title="Edge Filters" onclick="setActivePanel('filter')">
@@ -349,593 +324,322 @@
     </button>
   </div>
 
-  <!-- SECONDARY SIDEBAR -->
+  <!-- SIDEBAR -->
   <div id="secondary-sidebar">
 
-    <!-- SEARCH PANEL -->
-    <div id="search-panel" style="display:none; flex-direction:column; flex-shrink:0; border-bottom:1px solid var(--border)">
-      <div class="panel-header">Node Search</div>
-      <div style="padding:0 10px 10px">
-        <input id="search-input" type="text" placeholder="Name or ID…"
-          style="width:100%;padding:5px 8px;background:var(--bg);border:1px solid var(--border);
-                 border-radius:4px;color:var(--text-bright);font-size:12px;outline:none"
-          oninput="onSearchInput(this.value)" />
-        <ul id="search-results" style="list-style:none;margin-top:6px;max-height:180px;overflow-y:auto"></ul>
+    <div id="search-panel">
+      <div class="panel-header">Search</div>
+      <div class="search-input-wrap">
+        <input id="search-input" type="text" placeholder="Name or ID…" oninput="onSearchInput(this.value)" />
+        <ul id="search-results"></ul>
       </div>
     </div>
 
-    <!-- FILTER PANEL -->
-    <div id="filter-panel" style="display:none; flex-direction:column; flex-shrink:0; border-bottom:1px solid var(--border)">
-      <div class="panel-header">Edge Filters</div>
-      <div id="filter-toggles" style="padding:6px 10px 10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div id="filter-panel">
+      <div class="panel-header">Edge Types</div>
+      <div id="filter-toggles"></div>
     </div>
 
-    <!-- VITALS PANEL -->
-    <div id="vitals-panel" style="display:none; flex-direction:column; flex: 1; overflow-y:auto">
+    <div id="vitals-panel">
       <div class="panel-header">Vitals</div>
-      <div id="vitals-content" style="padding:8px 14px 16px"></div>
+      <div id="vitals-content"></div>
     </div>
 
-    <!-- TIMELINE PANEL -->
     <div id="timeline-panel">
       <div class="panel-header">Timeline</div>
       <ul id="timeline-list"></ul>
       <div id="diff-banner"></div>
     </div>
 
-    <!-- NODE INSPECTOR PANEL -->
     <div id="inspector-panel">
-      <div class="panel-header">Node Inspector</div>
+      <div class="panel-header">Inspector</div>
       <div id="inspector-content">
-        <p class="empty-msg">Click a node on the canvas to inspect it.</p>
+        <p class="empty-msg">Click a node to inspect it.</p>
       </div>
     </div>
 
   </div>
 
-  <!-- MAIN CANVAS AREA -->
+  <!-- CANVAS -->
   <div id="main">
     <div id="canvas-wrapper">
-      <!-- Cytoscape.js mounts here -->
       <div id="graph-canvas"></div>
-    </div>
-    <div id="status-bar">
-      <div id="status-ws">
-        <div id="ws-dot"></div>
-        <span id="ws-label">Connecting...</span>
-      </div>
-      <span id="status-node-count">0 nodes</span>
-      <span id="status-edge-count">0 edges</span>
-      <span id="status-slot">live</span>
     </div>
   </div>
 
 </div>
 
-<!-- ================================================================== -->
-<!-- COMMIT MODAL                                                         -->
-<!-- ================================================================== -->
+<!-- STATUS BAR -->
+<div id="status-bar">
+  <div id="status-ws">
+    <div id="ws-dot"></div>
+    <span id="ws-label">Connecting…</span>
+  </div>
+  <span class="status-sep">·</span>
+  <span id="status-node-count">0 nodes</span>
+  <span class="status-sep">·</span>
+  <span id="status-edge-count">0 edges</span>
+  <span class="status-sep">·</span>
+  <span id="status-slot">live</span>
+</div>
+
+<!-- COMMIT MODAL -->
 <div id="commit-modal-bg" onclick="closeCommitModal(event)">
   <div id="commit-modal">
     <h3>Commit Graph Snapshot</h3>
-    <input id="commit-msg-input" type="text" placeholder="Describe this commit..." maxlength="200" />
+    <input id="commit-msg-input" type="text" placeholder="Describe this snapshot…" maxlength="200" />
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeCommitModal()">Cancel</button>
-      <button class="btn-primary" onclick="doCommit()">Commit</button>
+      <button class="btn-primary"   onclick="doCommit()">Commit</button>
     </div>
   </div>
 </div>
 
-<!-- ================================================================== -->
-<!-- JAVASCRIPT                                                           -->
-<!-- ================================================================== -->
 <script>
-// -----------------------------------------------------------------------
-// State
-// -----------------------------------------------------------------------
-let _ws = null;
-let _nodes = [];
-let _edges = [];
-let _timeline = [];
-let _selectedSlot = 0;     // 0 = live
-let _selectedNodeId = null;
-let _diffData = null;
-// Exposed globally so Phase 5 Vis-Network code can call back into here
-window.CortexUI = {
-  onNodeClick,
-  setDiff,
-  setGraph,
-};
+let _ws = null, _nodes = [], _edges = [], _timeline = [];
+let _selectedSlot = 0, _selectedNodeId = null, _diffData = null;
 
-// -----------------------------------------------------------------------
-// Bootstrap
-// -----------------------------------------------------------------------
+window.CortexUI = { onNodeClick, setDiff, setGraph };
+
 (async function init() {
   await loadMeta();
   await loadTimeline();
   connectWS();
 })();
 
-// -----------------------------------------------------------------------
-// Meta (project name + favicon)
-// -----------------------------------------------------------------------
 async function loadMeta() {
   try {
     const r = await fetch('/api/meta');
     const meta = await r.json();
-
     document.title = 'Cortex — ' + meta.project_name;
-    document.getElementById('header-project').textContent = '— ' + meta.project_name;
-
+    document.getElementById('header-project').textContent = meta.project_name;
     if (meta.favicon_b64) {
       const dataUrl = `data:${meta.favicon_mime};base64,${meta.favicon_b64}`;
-      const faviconEl = document.getElementById('dynamic-favicon');
-      faviconEl.href = dataUrl;
-
-      const logoImg = document.getElementById('logo-img');
-      const logoFallback = document.getElementById('logo-fallback');
-      logoImg.src = dataUrl;
-      logoImg.style.display = 'block';
-      logoFallback.style.display = 'none';
+      document.getElementById('dynamic-favicon').href = dataUrl;
+      const li = document.getElementById('logo-img'), lf = document.getElementById('logo-fallback');
+      li.src = dataUrl; li.style.display = 'block'; lf.style.display = 'none';
     } else {
-      // Use first letter of project name as fallback
-      const letter = (meta.project_name || 'C')[0].toUpperCase();
-      document.getElementById('logo-fallback').textContent = letter;
+      document.getElementById('logo-fallback').textContent = (meta.project_name || 'C')[0].toUpperCase();
     }
-  } catch (e) {
-    console.warn('Meta load failed:', e);
-  }
+  } catch(e) { console.warn('Meta load failed:', e); }
 }
 
-// -----------------------------------------------------------------------
-// Timeline
-// -----------------------------------------------------------------------
 async function loadTimeline() {
   try {
     const r = await fetch('/api/timeline');
     _timeline = await r.json();
     renderTimeline();
-  } catch (e) {
-    console.warn('Timeline load failed:', e);
-  }
+  } catch(e) { console.warn('Timeline load failed:', e); }
 }
 
 function renderTimeline() {
   const ul = document.getElementById('timeline-list');
   ul.innerHTML = '';
-
-  // Prepend "Live" entry
-  const liveItems = [{ slot: 0, label: 'Live', timestamp: 'current state', message: '' }];
-  const all = [...liveItems, ..._timeline];
-
+  const all = [{ slot: 0, label: 'Live', timestamp: '', message: '' }, ..._timeline];
   all.forEach((v, i) => {
     const li = document.createElement('li');
     if (v.slot === _selectedSlot) li.classList.add('selected');
-
-    const dot = document.createElement('div');
-    dot.className = 'tl-dot';
-
-    const info = document.createElement('div');
-    info.style.minWidth = 0;
-
-    const label = document.createElement('div');
-    label.className = 'tl-label';
+    const dot = document.createElement('div'); dot.className = 'tl-dot';
+    const info = document.createElement('div'); info.style.minWidth = '0';
+    const label = document.createElement('div'); label.className = 'tl-label';
     label.textContent = v.label || (i === 0 ? 'Live' : `Commit #${_timeline.length - i + 1}`);
-
-    const ts = document.createElement('div');
-    ts.className = 'tl-ts';
-    ts.textContent = v.timestamp ? v.timestamp.replace('T', ' ').slice(0, 19) : '';
-
     info.appendChild(label);
-    if (v.message) {
-      const msg = document.createElement('div');
-      msg.className = 'tl-ts';
-      msg.textContent = v.message;
-      info.appendChild(msg);
-    }
-    info.appendChild(ts);
-
-    li.appendChild(dot);
-    li.appendChild(info);
+    if (v.message) { const m = document.createElement('div'); m.className = 'tl-ts'; m.textContent = v.message; info.appendChild(m); }
+    if (v.timestamp) { const t = document.createElement('div'); t.className = 'tl-ts'; t.textContent = v.timestamp.replace('T',' ').slice(0,16); info.appendChild(t); }
+    li.appendChild(dot); li.appendChild(info);
     li.addEventListener('click', () => selectSlot(v.slot));
     ul.appendChild(li);
   });
 }
 
 async function selectSlot(slot) {
-  _selectedSlot = slot;
-  _diffData = null;
-
-  // Update timeline selection UI
+  _selectedSlot = slot; _diffData = null;
   document.querySelectorAll('#timeline-list li').forEach((li, i) => {
     const allSlots = [0, ..._timeline.map(v => v.slot)];
     li.classList.toggle('selected', allSlots[i] === slot);
   });
-
   const banner = document.getElementById('diff-banner');
-
   if (slot === 0) {
     banner.classList.remove('visible');
     await loadGraph(0);
   } else {
-    // Diff view: load the CURRENT (live) graph and overlay diff colours.
-    // This shows the full current topology with green/red/orange annotations
-    // for what changed since the selected historical slot.
     await loadGraph(0);
-
     const currentSlot = _timeline.length > 0 ? _timeline[0].slot : null;
     if (currentSlot && currentSlot !== slot) {
       const diffR = await fetch(`/api/diff?from_slot=${slot}&to_slot=${currentSlot}`);
       _diffData = await diffR.json();
-
-      // Also fetch the OLD snapshot nodes so we can show deleted ones
-      // (they don't exist in the live graph but must appear red on canvas)
       const oldR = await fetch(`/api/graph?slot=${slot}`);
       const oldData = await oldR.json();
       const liveIds = new Set(_nodes.map(n => n.id));
-      for (const oldNode of (oldData.nodes || [])) {
-        if (!liveIds.has(oldNode.id)) _nodes.push(oldNode);
-      }
-      for (const oldEdge of (oldData.edges || [])) {
-        const key = e => e.src + '|' + e.rel + '|' + e.dst;
+      for (const on of (oldData.nodes || [])) { if (!liveIds.has(on.id)) _nodes.push(on); }
+      for (const oe of (oldData.edges || [])) {
+        const key = e => e.src+'|'+e.rel+'|'+e.dst;
         const liveKeys = new Set(_edges.map(key));
-        if (!liveKeys.has(key(oldEdge))) _edges.push(oldEdge);
+        if (!liveKeys.has(key(oe))) _edges.push(oe);
       }
-
-      banner.textContent = `Diffing slot ${slot} → current  ·  ${_diffData.added_nodes.length} added  ·  ${_diffData.deleted_nodes.length} deleted  ·  ${_diffData.modified_nodes.length} modified`;
+      banner.textContent = `Diff ${slot} → current  ·  +${_diffData.added_nodes.length}  -${_diffData.deleted_nodes.length}  ~${_diffData.modified_nodes.length}`;
       banner.classList.add('visible');
     }
   }
-
   updateStatusCounts();
-  if (window.CortexGraph) {
-    window.CortexGraph.render(_nodes, _edges, _diffData);
-  } else {
-    window._pendingGraph = { nodes: _nodes, edges: _edges, diffData: _diffData };
-  }
-
+  if (window.CortexGraph) window.CortexGraph.render(_nodes, _edges, _diffData);
+  else window._pendingGraph = { nodes: _nodes, edges: _edges, diffData: _diffData };
   document.getElementById('status-slot').textContent = slot === 0 ? 'live' : `slot ${slot}`;
 }
 
 async function loadGraph(slot) {
   const url = slot === 0 ? '/api/graph' : `/api/graph?slot=${slot}`;
   try {
-    const r = await fetch(url);
-    const data = await r.json();
-    _nodes = data.nodes || [];
-    window._nodes = _nodes;
-    _edges = data.edges || [];
-    window._edges = _edges;
+    const r = await fetch(url); const data = await r.json();
+    _nodes = data.nodes || []; window._nodes = _nodes;
+    _edges = data.edges || []; window._edges = _edges;
     updateStatusCounts();
-  } catch (e) {
-    console.warn('Graph load failed:', e);
-  }
+  } catch(e) { console.warn('Graph load failed:', e); }
 }
 
-// -----------------------------------------------------------------------
-// WebSocket
-// -----------------------------------------------------------------------
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   _ws = new WebSocket(`${proto}://${location.host}/ws`);
-
-  const dot = document.getElementById('ws-dot');
-  const label = document.getElementById('ws-label');
-
-  _ws.onopen = () => {
-    dot.className = 'connected';
-    label.textContent = 'Connected';
-  };
-
-  _ws.onclose = () => {
-    dot.className = 'error';
-    label.textContent = 'Disconnected — retrying...';
-    setTimeout(connectWS, 3000);
-  };
-
-  _ws.onerror = () => {
-    dot.className = 'error';
-  };
-
-  _ws.onmessage = (evt) => {
-    const msg = JSON.parse(evt.data);
-    handleWSMessage(msg);
-  };
+  const dot = document.getElementById('ws-dot'), label = document.getElementById('ws-label');
+  _ws.onopen  = () => { dot.className = 'connected'; label.textContent = 'Connected'; };
+  _ws.onclose = () => { dot.className = 'error'; label.textContent = 'Disconnected'; setTimeout(connectWS, 3000); };
+  _ws.onerror = () => { dot.className = 'error'; };
+  _ws.onmessage = evt => handleWSMessage(JSON.parse(evt.data));
 }
 
 function handleWSMessage(msg) {
   if (msg.event === 'init') {
-    _nodes = msg.nodes || [];
-    window._nodes = _nodes;
-    _edges = msg.edges || [];
-    _timeline = msg.timeline || [];
-    renderTimeline();
-    updateStatusCounts();
-    // canvas.js may not be ready yet — buffer if needed
-    if (window.CortexGraph) {
-      window.CortexGraph.render(_nodes, _edges, null);
-    } else {
-      window._pendingGraph = { nodes: _nodes, edges: _edges, diffData: null };
-    }
+    _nodes = msg.nodes || []; window._nodes = _nodes;
+    _edges = msg.edges || []; _timeline = msg.timeline || [];
+    renderTimeline(); updateStatusCounts();
+    if (window.CortexGraph) window.CortexGraph.render(_nodes, _edges, null);
+    else window._pendingGraph = { nodes: _nodes, edges: _edges, diffData: null };
   } else if (msg.event === 'node_added') {
-    _nodes.push(msg.node);
-    (msg.edges || []).forEach(e => _edges.push(e));
-    updateStatusCounts();
-    if (window.CortexGraph && _selectedSlot === 0) {
-      window.CortexGraph.addNode(msg.node, msg.edges || []);
-    }
+    _nodes.push(msg.node); (msg.edges||[]).forEach(e => _edges.push(e)); updateStatusCounts();
+    if (window.CortexGraph && _selectedSlot === 0) window.CortexGraph.addNode(msg.node, msg.edges||[]);
   } else if (msg.event === 'snapshot') {
-    _timeline.unshift(msg.entry);
-    renderTimeline();
+    _timeline.unshift(msg.entry); renderTimeline();
   }
 }
 
-// -----------------------------------------------------------------------
-// Node inspector (called by canvas click in Phase 5)
-// -----------------------------------------------------------------------
-function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function onNodeClick(nodeId) {
   _selectedNodeId = nodeId;
   const node = _nodes.find(n => n.id === nodeId);
   if (!node) return;
-
   const connectedEdges = _edges.filter(e => e.src === nodeId || e.dst === nodeId);
   const isDesign = node.label === 'SystemDesign';
-
-  const statusColor = { 'shipped': '#059669', 'building': '#ea580c', 'proposed': '#6b7280' };
-  const sc = statusColor[node.status] || '#6b7280';
-
-  const container = document.getElementById('inspector-content');
-  container.innerHTML = `
+  const statusColor = { 'shipped': '#059669', 'building': '#d97706', 'proposed': '#52525b' };
+  const sc = statusColor[node.status] || '#52525b';
+  const nodeTypeColor = { Service:'var(--c-svc)', Database:'var(--c-db)', Infrastructure:'var(--c-infra)', File:'var(--c-file)', SystemDesign:'var(--c-sys)' };
+  const tc = nodeTypeColor[node.label] || 'var(--accent-h)';
+  document.getElementById('inspector-content').innerHTML = `
     <div class="inspector-field">
       <div class="inspector-label">Type</div>
-      <div class="inspector-value"><span class="inspector-badge">${esc(node.label || '?')}</span></div>
+      <div class="inspector-value"><span class="inspector-badge" style="color:${tc};background:rgba(255,255,255,0.04);border:1px solid ${tc}44">${esc(node.label||'?')}</span></div>
     </div>
-    ${isDesign && node.section ? `
-    <div class="inspector-field">
-      <div class="inspector-label">Section</div>
-      <div class="inspector-value" style="color:#a78bfa;font-weight:600">${esc(node.section)}</div>
-    </div>` : ''}
+    ${isDesign && node.section ? `<div class="inspector-field"><div class="inspector-label">Section</div><div class="inspector-value" style="color:var(--c-sys);font-weight:600">${esc(node.section)}</div></div>` : ''}
     <div class="inspector-field">
       <div class="inspector-label">Name</div>
-      <div class="inspector-value">${esc(node.name) || '—'}</div>
+      <div class="inspector-value" style="font-weight:600">${esc(node.name)||'—'}</div>
     </div>
-    ${node.status ? `
-    <div class="inspector-field">
-      <div class="inspector-label">Status</div>
-      <div class="inspector-value">
-        <span style="display:inline-block;padding:1px 8px;border-radius:10px;
-          font-size:11px;font-weight:600;background:${esc(sc)};color:#fff">${esc(node.status)}</span>
-      </div>
-    </div>` : ''}
+    ${node.status ? `<div class="inspector-field"><div class="inspector-label">Status</div><div class="inspector-value"><span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:600;background:${esc(sc)}22;color:${esc(sc)};border:1px solid ${esc(sc)}44">${esc(node.status)}</span></div></div>` : ''}
     <div class="inspector-field">
       <div class="inspector-label">Description</div>
-      <div class="inspector-value">${esc(node.description) || '—'}</div>
+      <div class="inspector-value" style="font-size:11px;line-height:1.5;color:var(--text-muted)">${esc(node.description)||'—'}</div>
     </div>
-    ${isDesign && node.rationale ? `
-    <div class="inspector-field">
-      <div class="inspector-label">Rationale</div>
-      <div class="inspector-value" style="font-style:italic;font-size:11px">${esc(node.rationale)}</div>
-    </div>` : ''}
-    ${node.file_path ? `<div class="inspector-field"><div class="inspector-label">Path</div>
-      <div class="inspector-value" style="font-family:monospace;font-size:11px">${esc(node.file_path)}</div></div>` : ''}
+    ${isDesign && node.rationale ? `<div class="inspector-field"><div class="inspector-label">Rationale</div><div class="inspector-value" style="font-style:italic;font-size:10.5px;color:var(--text-muted);line-height:1.5">${esc(node.rationale)}</div></div>` : ''}
+    ${node.file_path ? `<div class="inspector-field"><div class="inspector-label">Path</div><div class="inspector-value" style="font-family:var(--mono);font-size:10px;color:var(--c-file)">${esc(node.file_path)}</div></div>` : ''}
     <div class="inspector-field">
       <div class="inspector-label">ID</div>
-      <div class="inspector-value" style="font-family:monospace;font-size:10px;color:var(--text-muted)">${esc(node.id)}</div>
+      <div class="inspector-value" style="font-family:var(--mono);font-size:9.5px;color:var(--text-dim)">${esc(node.id)}</div>
     </div>
     <div class="inspector-field">
       <div class="inspector-label">Connections (${connectedEdges.length})</div>
       <ul class="inspector-connections">
-        ${connectedEdges.map(e =>
-          `<li>${e.src === nodeId ? '&rarr;' : '&larr;'} [${esc(e.rel)}] ${esc(e.src === nodeId ? e.dst : e.src)}</li>`
-        ).join('') || '<li style="color:var(--text-muted)">No connections</li>'}
+        ${connectedEdges.map(e => `<li>${e.src===nodeId?'→':'←'} <span style="color:var(--text-dim)">[${esc(e.rel)}]</span> ${esc(e.src===nodeId?e.dst:e.src)}</li>`).join('')||'<li style="color:var(--text-dim)">No connections</li>'}
       </ul>
     </div>
   `;
 }
 
-// -----------------------------------------------------------------------
-// Panel switching
-// -----------------------------------------------------------------------
 let _activePanel = 'timeline';
-
 function setActivePanel(panel) {
   _activePanel = panel;
   document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('btn-' + panel)?.classList.add('active');
-
-  // Clear search state when navigating away from the search panel
-  if (panel !== 'search') {
-    const inp = document.getElementById('search-input');
-    if (inp && inp.value) {
-      inp.value = '';
-      onSearchInput('');
-    }
-  }
-
-  const panels = { timeline: 'timeline-panel', search: 'search-panel', filter: 'filter-panel', vitals: 'vitals-panel' };
-  Object.values(panels).forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
+  document.getElementById('btn-'+panel)?.classList.add('active');
+  if (panel !== 'search') { const i = document.getElementById('search-input'); if (i && i.value) { i.value=''; onSearchInput(''); } }
+  const panels = { timeline:'timeline-panel', search:'search-panel', filter:'filter-panel', vitals:'vitals-panel' };
+  Object.values(panels).forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
   const active = document.getElementById(panels[panel]);
   if (active) active.style.display = 'flex';
-
   if (panel === 'filter') buildFilterToggles();
 }
 
-// -----------------------------------------------------------------------
-// Diff bridge (Phase 5 calls this)
-// -----------------------------------------------------------------------
-function setDiff(diffData) {
-  _diffData = diffData;
-}
+function setDiff(d) { _diffData = d; }
+function setGraph(n, e) { _nodes = n; _edges = e; updateStatusCounts(); }
 
-function setGraph(nodes, edges) {
-  _nodes = nodes;
-  _edges = edges;
-  updateStatusCounts();
-}
-
-// -----------------------------------------------------------------------
-// Status bar
-// -----------------------------------------------------------------------
 function updateStatusCounts() {
   document.getElementById('status-node-count').textContent = `${_nodes.length} nodes`;
   document.getElementById('status-edge-count').textContent = `${_edges.length} edges`;
 }
 
-// -----------------------------------------------------------------------
-// Node Search
-// -----------------------------------------------------------------------
 function onSearchInput(q) {
-  if (window.CortexGraph) {
-    if (q) window.CortexGraph.highlightSearch(q);
-    else   window.CortexGraph.clearSearch();
-  }
-
-  const ul = document.getElementById('search-results');
-  ul.innerHTML = '';
+  if (window.CortexGraph) { if (q) window.CortexGraph.highlightSearch(q); else window.CortexGraph.clearSearch(); }
+  const ul = document.getElementById('search-results'); ul.innerHTML = '';
   if (!q) return;
-  const matches = _nodes.filter(n =>
-    (n.name || '').toLowerCase().includes(q.toLowerCase()) ||
-    (n.id   || '').toLowerCase().includes(q.toLowerCase())
-  ).slice(0, 20);
-
-  matches.forEach(n => {
-    const li = document.createElement('li');
-    li.textContent = (n.name || n.id);
-    li.title = n.id;
-    li.addEventListener('click', () => {
-      if (window.CortexGraph) window.CortexGraph.focusNode(n.id);
-      onNodeClick(n.id);
-    });
+  _nodes.filter(n => (n.name||'').toLowerCase().includes(q.toLowerCase()) || (n.id||'').toLowerCase().includes(q.toLowerCase())).slice(0,20).forEach(n => {
+    const li = document.createElement('li'); li.textContent = n.name||n.id; li.title = n.id;
+    li.addEventListener('click', () => { if (window.CortexGraph) window.CortexGraph.focusNode(n.id); onNodeClick(n.id); });
     ul.appendChild(li);
   });
 }
 
-// -----------------------------------------------------------------------
-// Edge Filter
-// -----------------------------------------------------------------------
 let _hiddenEdgeLabels = new Set();
-
 function buildFilterToggles() {
-  const container = document.getElementById('filter-toggles');
-  if (!container) return;
-
+  const c = document.getElementById('filter-toggles'); if (!c) return;
   const labels = [...new Set(_edges.map(e => e.rel).filter(Boolean))].sort();
-
-  // Prune stale hidden labels not present in current graph
-  const labelSet = new Set(labels);
-  for (const hidden of _hiddenEdgeLabels) {
-    if (!labelSet.has(hidden)) _hiddenEdgeLabels.delete(hidden);
-  }
-
-  container.innerHTML = '';
-
+  const ls = new Set(labels);
+  for (const h of _hiddenEdgeLabels) { if (!ls.has(h)) _hiddenEdgeLabels.delete(h); }
+  c.innerHTML = '';
   labels.forEach(label => {
     const pill = document.createElement('button');
     pill.className = 'filter-pill' + (_hiddenEdgeLabels.has(label) ? '' : ' active');
     pill.textContent = label;
     pill.addEventListener('click', () => {
-      if (_hiddenEdgeLabels.has(label)) {
-        _hiddenEdgeLabels.delete(label);
-        pill.classList.add('active');
-      } else {
-        _hiddenEdgeLabels.add(label);
-        pill.classList.remove('active');
-      }
+      if (_hiddenEdgeLabels.has(label)) { _hiddenEdgeLabels.delete(label); pill.classList.add('active'); }
+      else { _hiddenEdgeLabels.add(label); pill.classList.remove('active'); }
       if (window.CortexGraph) window.CortexGraph.filterEdgesByLabel(_hiddenEdgeLabels);
     });
-    container.appendChild(pill);
+    c.appendChild(pill);
   });
 }
 
-// -----------------------------------------------------------------------
-// Commit modal
-// -----------------------------------------------------------------------
-function openCommitModal() {
-  document.getElementById('commit-modal-bg').classList.add('visible');
-  document.getElementById('commit-msg-input').focus();
-}
-
-function closeCommitModal(e) {
-  if (!e || e.target === document.getElementById('commit-modal-bg')) {
-    document.getElementById('commit-modal-bg').classList.remove('visible');
-  }
-}
-
+function openCommitModal()  { document.getElementById('commit-modal-bg').classList.add('visible'); document.getElementById('commit-msg-input').focus(); }
+function closeCommitModal(e){ if (!e || e.target === document.getElementById('commit-modal-bg')) document.getElementById('commit-modal-bg').classList.remove('visible'); }
 async function doCommit() {
-  const msg = document.getElementById('commit-msg-input').value.trim() || 'Manual commit from UI';
+  const msg = document.getElementById('commit-msg-input').value.trim() || 'Manual snapshot from UI';
   document.getElementById('commit-modal-bg').classList.remove('visible');
   document.getElementById('commit-msg-input').value = '';
-
-  const r = await fetch('/api/commit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: msg }),
-  });
-  const entry = await r.json();
-  _timeline.unshift(entry);
-  renderTimeline();
+  const r = await fetch('/api/commit', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:msg}) });
+  const entry = await r.json(); _timeline.unshift(entry); renderTimeline();
 }
+document.getElementById('commit-msg-input').addEventListener('keydown', e => { if (e.key==='Enter') doCommit(); if (e.key==='Escape') closeCommitModal(); });
 
-// Enter key submits commit
-document.getElementById('commit-msg-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doCommit();
-  if (e.key === 'Escape') closeCommitModal();
-});
-
-// -----------------------------------------------------------------------
-// Export
-// -----------------------------------------------------------------------
-function toggleExportMenu() {
-  const menu = document.getElementById('export-menu');
-  menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-}
-
-document.addEventListener('click', function(e) {
+function toggleExportMenu() { const m = document.getElementById('export-menu'); m.style.display = m.style.display==='block'?'none':'block'; }
+document.addEventListener('click', e => {
   if (!e.target.closest('#export-btn') && !e.target.closest('#export-menu')) {
-    const menu = document.getElementById('export-menu');
-    if (menu) menu.style.display = 'none';
+    const m = document.getElementById('export-menu'); if (m) m.style.display = 'none';
   }
 });
-
 function exportGraph(format) {
   document.getElementById('export-menu').style.display = 'none';
-  if (format === 'png') {
-    if (!window.CortexGraph) return;
-    const dataUri = window.CortexGraph.screenshot();
-    if (!dataUri) return;
-    const link = document.createElement('a');
-    link.download = 'cortex-graph.png';
-    link.href = dataUri;
-    link.click();
-  } else if (format === 'json') {
-    const blob = new Blob(
-      [JSON.stringify({ nodes: _nodes, edges: _edges }, null, 2)],
-      { type: 'application/json' }
-    );
-    _download(blob, 'cortex-graph.json');
-  } else if (format === 'triples') {
-    const nodeMap = Object.fromEntries(_nodes.map(n => [n.id, n.name || n.id]));
-    const lines = _edges.map(e =>
-      `(${nodeMap[e.src] || e.src})-[${e.rel}]->(${nodeMap[e.dst] || e.dst})`
-    );
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-    _download(blob, 'cortex-triples.txt');
-  }
+  if (format==='png') { if (!window.CortexGraph) return; const d = window.CortexGraph.screenshot(); if (!d) return; const a = document.createElement('a'); a.download='cortex-graph.png'; a.href=d; a.click(); }
+  else if (format==='json') { _download(new Blob([JSON.stringify({nodes:_nodes,edges:_edges},null,2)],{type:'application/json'}),'cortex-graph.json'); }
+  else if (format==='triples') { const nm=Object.fromEntries(_nodes.map(n=>[n.id,n.name||n.id])); _download(new Blob([_edges.map(e=>`(${nm[e.src]||e.src})-[${e.rel}]->(${nm[e.dst]||e.dst})`).join('\n')],{type:'text/plain'}),'cortex-triples.txt'); }
 }
-
-function _download(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
+function _download(blob, filename) { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url); }
 </script>
 
 <script src="/static/panels/vitals.js"></script>
