@@ -601,7 +601,9 @@ async function loadGraph(slot) {
     const r = await fetch(url);
     const data = await r.json();
     _nodes = data.nodes || [];
+    window._nodes = _nodes;
     _edges = data.edges || [];
+    window._edges = _edges;
     updateStatusCounts();
   } catch (e) {
     console.warn('Graph load failed:', e);
@@ -642,6 +644,7 @@ function connectWS() {
 function handleWSMessage(msg) {
   if (msg.event === 'init') {
     _nodes = msg.nodes || [];
+    window._nodes = _nodes;
     _edges = msg.edges || [];
     _timeline = msg.timeline || [];
     renderTimeline();
