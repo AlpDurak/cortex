@@ -164,7 +164,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from cortex.web_server import _build_app
 
     app = _build_app(root)
-    print(f"Cortex  →  http://{args.host}:{args.port}  (project: {root})")
+    print(f"Cortex  ->  http://{args.host}:{args.port}  (project: {root})")
     uvicorn.run(app, host=args.host, port=args.port)
 
 

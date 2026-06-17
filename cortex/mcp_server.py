@@ -156,7 +156,7 @@ def query_graph_diff(
         return f"Error: {exc}"
 
     lines = [
-        f"# Graph Diff: slot {from_version} → slot {to_version}\n",
+        f"# Graph Diff: slot {from_version} -> slot {to_version}\n",
         f"Added nodes    ({len(diff['added_nodes'])}): {', '.join(diff['added_nodes']) or 'none'}",
         f"Deleted nodes  ({len(diff['deleted_nodes'])}): {', '.join(diff['deleted_nodes']) or 'none'}",
         f"Modified nodes ({len(diff['modified_nodes'])}): {', '.join(diff['modified_nodes']) or 'none'}",
@@ -607,7 +607,7 @@ def get_latent_bridges_tool(
     for b in bridges:
         lines.append(
             f"({b['src']})-[{b['rel']}]->({b['dst']})  "
-            f"cluster {b['src_cluster']} → {b['dst_cluster']}"
+            f"cluster {b['src_cluster']} -> {b['dst_cluster']}"
         )
     return "\n".join(lines)
 
