@@ -17,6 +17,12 @@ import sys
 from pathlib import Path
 
 
+def _cmd_connect(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    from cortex.connect import run_connect
+    run_connect(root, preselect=args.select, git_ledger=args.git_ledger)
+
+
 def _cmd_relay(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     from core.db import DatabaseManager
@@ -153,6 +159,17 @@ def main() -> None:
     p_relay.add_argument("--cypher-only", action="store_true",
                          help="Print Cypher statements without connecting")
 
+    # ── connect ──────────────────────────────────────────────────────────────
+    p_connect = sub.add_parser("connect", help="Install Cortex MCP config into AI tool configs")
+    p_connect.add_argument("--root", default=".", metavar="DIR",
+                           help="Project root (default: current directory)")
+    p_connect.add_argument("--select", nargs="*", metavar="PLATFORM",
+                           help="Non-interactive: pre-select platforms by key")
+    p_connect.add_argument("--git-ledger", action="store_true", default=None,
+                           help="Non-interactive: enable Git Ledger hook without prompting")
+    p_connect.add_argument("--no-git-ledger", dest="git_ledger", action="store_false",
+                           help="Non-interactive: skip Git Ledger hook without prompting")
+
     # ── reconcile (git merge driver) ─────────────────────────────────────────
     p_rec = sub.add_parser("reconcile", add_help=False)
     p_rec.add_argument("base")
@@ -169,6 +186,8 @@ def main() -> None:
         _cmd_mcp(args)
     elif args.command == "relay":
         _cmd_relay(args)
+    elif args.command == "connect":
+        _cmd_connect(args)
     elif args.command == "reconcile":
         from core.reconciler import reconcile_files
         sys.exit(reconcile_files(args.base, args.ours, args.theirs))
