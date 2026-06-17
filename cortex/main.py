@@ -17,6 +17,76 @@ import sys
 from pathlib import Path
 
 
+_HOOK_MARKER = "# cortex-hook"
+
+_HOOK_SCRIPT = """\
+#!/bin/sh
+# cortex-hook — managed by 'cortex hook install'. Do not edit this line.
+CORTEX_ROOT="$(git rev-parse --show-toplevel)"
+MSG="$(git log -1 --pretty=%s 2>/dev/null || echo 'git commit')"
+SHA="$(git log -1 --pretty=%H 2>/dev/null || echo '')"
+cortex snapshot --message "$MSG" --sha "$SHA" --root "$CORTEX_ROOT" 2>/dev/null || true
+"""
+
+
+def _cmd_hook(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    git_dir = root / ".git"
+
+    if not git_dir.is_dir():
+        candidate = root
+        while candidate != candidate.parent:
+            candidate = candidate.parent
+            if (candidate / ".git").is_dir():
+                git_dir = candidate / ".git"
+                break
+        else:
+            print("error: not a git repository", file=sys.stderr)
+            sys.exit(1)
+
+    hooks_dir = git_dir / "hooks"
+    hook_path = hooks_dir / "post-commit"
+
+    if args.hook_action == "install":
+        hooks_dir.mkdir(exist_ok=True)
+        hook_path.write_text(_HOOK_SCRIPT, encoding="utf-8")
+        import stat
+        current = hook_path.stat().st_mode
+        hook_path.chmod(current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        print(f"[Cortex] Hook installed at {hook_path}")
+        print("  Every git commit will now auto-snapshot the graph.")
+
+    elif args.hook_action == "uninstall":
+        if hook_path.exists() and _HOOK_MARKER in hook_path.read_text():
+            hook_path.unlink()
+            print(f"[Cortex] Hook removed from {hook_path}")
+        elif hook_path.exists():
+            print(f"[Cortex] Hook at {hook_path} was not installed by Cortex — leaving it alone.")
+        else:
+            print("[Cortex] No Cortex hook found — nothing to remove.")
+
+    elif args.hook_action == "status":
+        if hook_path.exists() and _HOOK_MARKER in hook_path.read_text():
+            print(f"[Cortex] Hook status: installed at {hook_path}")
+        elif hook_path.exists():
+            print(f"[Cortex] Hook status: {hook_path} exists but was not installed by Cortex.")
+        else:
+            print("[Cortex] Hook status: not installed. Run 'cortex hook install' to enable.")
+
+
+def _cmd_snapshot(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    from core.db import DatabaseManager
+    mgr = DatabaseManager(root)
+    mgr.init()
+    message = args.message or "Git commit snapshot"
+    if args.sha:
+        message = f"{message} ({args.sha[:7]})"
+    entry = mgr.commit_snapshot(message)
+    mgr.close()
+    print(f"[Cortex] Snapshot: slot={entry['slot']} ts={entry['timestamp']}")
+
+
 def _cmd_connect(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     from cortex.connect import run_connect
@@ -176,6 +246,26 @@ def main() -> None:
     p_rec.add_argument("ours")
     p_rec.add_argument("theirs")
 
+    # ── hook ─────────────────────────────────────────────────────────────────
+    p_hook = sub.add_parser("hook", help="Manage the Cortex git post-commit hook")
+    hook_sub = p_hook.add_subparsers(dest="hook_action", metavar="<action>")
+    hook_sub.required = True
+
+    p_hook_install = hook_sub.add_parser("install", help="Install the post-commit hook")
+    p_hook_install.add_argument("--root", default=".", metavar="DIR")
+
+    p_hook_uninstall = hook_sub.add_parser("uninstall", help="Remove the post-commit hook")
+    p_hook_uninstall.add_argument("--root", default=".", metavar="DIR")
+
+    p_hook_status = hook_sub.add_parser("status", help="Show hook installation status")
+    p_hook_status.add_argument("--root", default=".", metavar="DIR")
+
+    # ── snapshot (internal — called by git hook) ─────────────────────────────
+    p_snap = sub.add_parser("snapshot", add_help=False)
+    p_snap.add_argument("--message", default="Git commit snapshot")
+    p_snap.add_argument("--sha", default="")
+    p_snap.add_argument("--root", default=".")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -191,3 +281,11 @@ def main() -> None:
     elif args.command == "reconcile":
         from core.reconciler import reconcile_files
         sys.exit(reconcile_files(args.base, args.ours, args.theirs))
+    elif args.command == "hook":
+        _cmd_hook(args)
+    elif args.command == "snapshot":
+        _cmd_snapshot(args)
+
+
+if __name__ == "__main__":
+    main()
