@@ -381,7 +381,7 @@
 let _ws = null, _nodes = [], _edges = [], _timeline = [];
 let _selectedSlot = 0, _selectedNodeId = null, _diffData = null;
 
-window.CortexUI = { onNodeClick, setDiff, setGraph };
+window.CortexUI = { onNodeClick, setDiff, setGraph, clearSearch };
 
 (async function init() {
   await loadMeta();
@@ -559,6 +559,14 @@ function onNodeClick(nodeId) {
 
 function setDiff(d)  { _diffData = d; }
 function setGraph(n, e) { _nodes = n; _edges = e; updateStatusCounts(); }
+
+function clearSearch() {
+  const input = document.getElementById('search-input');
+  if (input) input.value = '';
+  const results = document.getElementById('search-results');
+  if (results) results.innerHTML = '';
+  if (window.CortexGraph) window.CortexGraph.clearSearch();
+}
 
 function updateStatusCounts() {
   document.getElementById('status-node-count').textContent = `${_nodes.length} nodes`;

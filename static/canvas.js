@@ -1,40 +1,76 @@
 /**
- * canvas.js — Cytoscape graph renderer v4 (light mode, iOS-style, fixed labels/icons)
+ * canvas.js — Cytoscape graph renderer v5
+ * Fixes: search fade opacity, clear on canvas/node tap, group bg, group padding/title, icons back
  */
 (function () {
   'use strict';
 
   // ── Light-mode chip palettes ──────────────────────────────────────────────
-  // bg  = node fill (soft tint)
-  // txt = dark readable text
-  // bdr = border stroke
   const TYPE_PAL = {
-    Service:        { bg: '#eef2ff', txt: '#4338ca', bdr: '#a5b4fc' },
-    Database:       { bg: '#ecfdf5', txt: '#065f46', bdr: '#6ee7b7' },
-    Infrastructure: { bg: '#fffbeb', txt: '#92400e', bdr: '#fcd34d' },
-    File:           { bg: '#e0f2fe', txt: '#0c4a6e', bdr: '#7dd3fc' },
-    SystemDesign:   { bg: '#faf5ff', txt: '#6b21a8', bdr: '#d8b4fe' },
+    Service:        { bg: '#dde3ff', txt: '#3730a3', bdr: '#818cf8' },
+    Database:       { bg: '#d1fae5', txt: '#065f46', bdr: '#34d399' },
+    Infrastructure: { bg: '#fef3c7', txt: '#92400e', bdr: '#f59e0b' },
+    File:           { bg: '#bfdbfe', txt: '#1e40af', bdr: '#60a5fa' },
+    SystemDesign:   { bg: '#ede9fe', txt: '#5b21b6', bdr: '#a78bfa' },
   };
 
   const DIFF_PAL = {
-    added:    { bg: '#f0fdf4', bdr: '#22c55e' },
-    deleted:  { bg: '#fef2f2', bdr: '#ef4444' },
-    modified: { bg: '#fffbeb', bdr: '#f59e0b' },
+    added:    { bg: '#dcfce7', bdr: '#22c55e' },
+    deleted:  { bg: '#fee2e2', bdr: '#ef4444' },
+    modified: { bg: '#fef9c3', bdr: '#f59e0b' },
+  };
+
+  // ── Icon factory ─────────────────────────────────────────────────────────
+  function _svg(color, body) {
+    return `data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" ` +
+      `stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`
+    )}`;
+  }
+
+  const ICONS = {
+    // WiFi-style signal arcs = Service
+    Service: (c) => _svg(c,
+      `<path d="M1.5 8 C1.5 4 4.5 1.5 8 1.5 C11.5 1.5 14.5 4 14.5 8"/><path d="M4 9.5 C4 7.5 5.8 6 8 6 C10.2 6 12 7.5 12 9.5"/><circle cx="8" cy="12.5" r="1.5"/>`
+    ),
+    // Cylinder = Database
+    Database: (c) => _svg(c,
+      `<ellipse cx="8" cy="4" rx="5.5" ry="1.8"/><path d="M2.5 4 L2.5 12 C2.5 13 5 13.8 8 13.8 C11 13.8 13.5 13 13.5 12 L13.5 4"/><path d="M2.5 8 C2.5 9 5 9.8 8 9.8 C11 9.8 13.5 9 13.5 8"/>`
+    ),
+    // Server rack = Infrastructure
+    Infrastructure: (c) => _svg(c,
+      `<rect x="1.5" y="2.5" width="13" height="4" rx="1"/><rect x="1.5" y="9.5" width="13" height="4" rx="1"/><circle cx="12" cy="4.5" r="0.9"/><circle cx="12" cy="11.5" r="0.9"/><line x1="3" y1="4.5" x2="9" y2="4.5"/><line x1="3" y1="11.5" x2="9" y2="11.5"/>`
+    ),
+    // Document = File
+    File: (c) => _svg(c,
+      `<path d="M9.5 1.5 H4 A1 1 0 0 0 3 2.5 V13.5 A1 1 0 0 0 4 14.5 H12 A1 1 0 0 0 13 13.5 V5.5 Z"/><polyline points="9.5 1.5 9.5 5.5 13 5.5"/>`
+    ),
+    // Hexagon = SystemDesign
+    SystemDesign: (c) => _svg(c,
+      `<polygon points="8 1.5 13.2 4.5 13.2 10.5 8 13.5 2.8 10.5 2.8 4.5"/>`
+    ),
   };
 
   // ── State ─────────────────────────────────────────────────────────────────
   let _cy              = null;
   let _hiddenEdgeLabels = new Set();
-  let _clusterData     = [];
+  let _searchActive    = false;
 
   // ── Stylesheet ────────────────────────────────────────────────────────────
   function buildStyle() {
     const typeStyles = Object.entries(TYPE_PAL).map(([label, p]) => ({
       selector: `node.${label}`,
       style: {
-        'background-color': p.bg,
-        'border-color':     p.bdr,
-        'color':            p.txt,
+        'background-color':         p.bg,
+        'border-color':             p.bdr,
+        'color':                    p.txt,
+        'background-image':         ICONS[label] ? ICONS[label](p.txt) : 'none',
+        'background-width':         '13px',
+        'background-height':        '13px',
+        'background-position-x':    '8px',
+        'background-position-y':    '50%',   // must NOT be 'center' — parser crash
+        'background-clip':          'none',
+        'background-image-opacity': 0.9,
       },
     }));
 
@@ -50,9 +86,10 @@
           'color':            '#374151',
           'text-valign':      'center',
           'text-halign':      'center',
+          'text-margin-x':    7,      // shift text right to clear the left-edge icon
           'width':            'label',
           'height':           '28px',
-          'padding':          '6px 14px',
+          'padding':          '6px 14px 6px 28px',  // 28px left = space for icon
           'shape':            'roundrectangle',
           'border-width':     1.5,
           'border-color':     '#e5e7eb',
@@ -62,48 +99,43 @@
         },
       },
 
-      // ── Type chips ────────────────────────────────────────────────
+      // ── Type chips (override base) ────────────────────────────────
       ...typeStyles,
 
       // ── Group container ───────────────────────────────────────────
       {
         selector: 'node:parent',
         style: {
-          'label':            'data(displayName)',
-          'font-size':        '9px',
-          'font-family':      'Consolas, monospace',
-          'font-weight':      700,
-          'color':            '#9ca3af',
-          'text-valign':      'top',
-          'text-halign':      'center',   // centered = INSIDE the box, not left edge
-          'text-margin-y':    10,         // push down 10px inside the top border
-          'background-color': '#fafafa',
-          'background-image': 'none',
-          'border-color':     '#e5e7eb',
-          'border-width':     1.5,
-          'border-style':     'dashed',
-          'padding':          '28px 12px 12px',
+          'label':              'data(displayName)',
+          'font-size':          '9px',
+          'font-family':        'Consolas, monospace',
+          'font-weight':        700,
+          'color':              '#6b7280',
+          'text-valign':        'top',
+          'text-halign':        'center',  // centered = always inside the container
+          'text-margin-y':      14,        // 14px inside from the top border
+          'background-color':   '#94a3b8', // slate-400 gray
+          'background-opacity': 0.13,      // very soft — dotted canvas shows through
+          'background-image':   'none',
+          'border-color':       '#cbd5e1',
+          'border-width':       1.5,
+          'border-style':       'dashed',
+          'padding':            '44px 20px 20px 20px', // 44px top = clears title
         },
       },
 
-      // ── Selected ──────────────────────────────────────────────────
+      // ── Selection ─────────────────────────────────────────────────
       {
         selector: 'node:selected',
-        style: {
-          'border-color': '#6366f1',
-          'border-width':  2.5,
-        },
+        style: { 'border-color': '#6366f1', 'border-width': 2.5 },
       },
       {
         selector: 'node:parent:selected',
-        style: {
-          'border-color': '#6366f1',
-          'border-width':  2,
-        },
+        style: { 'border-color': '#6366f1', 'border-width': 2 },
       },
 
-      // ── Search fade ───────────────────────────────────────────────
-      { selector: 'node.faded', style: { 'opacity': 0.12 } },
+      // ── Search fade — 0.28 keeps non-matching nodes hinted ────────
+      { selector: 'node.faded', style: { 'opacity': 0.28 } },
 
       // ── Diff overlays ─────────────────────────────────────────────
       { selector: 'node.diff-added',    style: { 'background-color': DIFF_PAL.added.bg,    'border-color': DIFF_PAL.added.bdr,    'border-width': 2 } },
@@ -124,21 +156,13 @@
           'font-size':               '8px',
           'font-family':             'Consolas, monospace',
           'color':                   '#9ca3af',
-          'text-background-color':   '#f8f9fb',
+          'text-background-color':   '#f4f4f8',
           'text-background-opacity': 0.9,
           'text-background-padding': '2px',
           'text-border-opacity':     0,
         },
       },
-      {
-        selector: 'edge:selected',
-        style: {
-          'width':              2,
-          'line-color':         '#6366f1',
-          'target-arrow-color': '#6366f1',
-          'color':              '#4f46e5',
-        },
-      },
+      { selector: 'edge:selected', style: { 'width': 2, 'line-color': '#6366f1', 'target-arrow-color': '#6366f1', 'color': '#4f46e5' } },
       { selector: 'edge.hidden',       style: { 'display': 'none' } },
       { selector: 'edge.diff-added',   style: { 'line-color': '#22c55e', 'target-arrow-color': '#22c55e', 'width': 2 } },
       { selector: 'edge.diff-deleted', style: { 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', 'line-style': 'dashed' } },
@@ -200,7 +224,7 @@
       border: '1px solid #e5e7eb',
       borderRadius: '12px',
       overflow: 'hidden', zIndex: '10',
-      boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       pointerEvents: 'none',
     });
 
@@ -241,13 +265,9 @@
   function pickLayout() {
     if (typeof cytoscapeDagre !== 'undefined') {
       return {
-        name:    'dagre',
-        rankDir: 'LR',
-        nodeSep: 24,
-        rankSep: 70,
-        padding: 44,
-        animate: true,
-        animationDuration: 400,
+        name: 'dagre', rankDir: 'LR',
+        nodeSep: 24, rankSep: 70, padding: 44,
+        animate: true, animationDuration: 400,
         nodeDimensionsIncludeLabels: true,
         ranker: 'network-simplex',
       };
@@ -270,14 +290,13 @@
 
     function btn(title, svg, onClick) {
       const b = document.createElement('button');
-      b.title   = title;
-      b.innerHTML = svg;
+      b.title = title; b.innerHTML = svg;
       Object.assign(b.style, {
         width: '32px', height: '32px', borderRadius: '10px',
         background: 'rgba(255,255,255,0.92)', border: '1px solid #e5e7eb',
         color: '#6b7280', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
         transition: 'color 0.12s, border-color 0.12s, background 0.12s',
       });
       b.addEventListener('mouseenter', () => { b.style.color = '#111827'; b.style.borderColor = '#d1d5db'; });
@@ -321,12 +340,29 @@
       maxZoom:             4,
     });
 
+    // Node tap: inspect + clear search highlight
     _cy.on('tap', 'node', function (evt) {
       const node = evt.target;
       if (node.isParent()) return;
+      if (_searchActive) {
+        _searchActive = false;
+        _cy.nodes().removeClass('faded');
+        if (window.CortexUI && window.CortexUI.clearSearch) window.CortexUI.clearSearch();
+      }
       if (window.CortexUI && window.CortexUI.onNodeClick) window.CortexUI.onNodeClick(node.id());
     });
 
+    // Canvas background tap: clear search highlight
+    _cy.on('tap', function (evt) {
+      if (evt.target !== _cy) return;
+      if (_searchActive) {
+        _searchActive = false;
+        _cy.nodes().removeClass('faded');
+        if (window.CortexUI && window.CortexUI.clearSearch) window.CortexUI.clearSearch();
+      }
+    });
+
+    // Double-tap node: zoom into neighborhood
     _cy.on('dbltap', 'node', function (evt) {
       _cy.animate({ fit: { eles: evt.target.neighborhood().add(evt.target), padding: 60 }, duration: 350 });
     });
@@ -342,7 +378,6 @@
     layout.one('layoutstop', () => refreshMinimap());
     layout.run();
 
-    if (window._cortexSearchQuery) highlightSearch(window._cortexSearchQuery);
     if (_hiddenEdgeLabels.size) filterEdgesByLabel(_hiddenEdgeLabels);
   }
 
@@ -356,11 +391,13 @@
   }
 
   function highlightSearch(query) {
-    window._cortexSearchQuery = query;
     if (!_cy) return;
-    const q = query.toLowerCase();
+    const q = query.toLowerCase().trim();
+    if (!q) { clearSearch(); return; }
+    _searchActive = true;
+    window._cortexSearchQuery = query;
     _cy.nodes().forEach(n => {
-      const d = n.data();
+      const d     = n.data();
       const match = (d.name || '').toLowerCase().includes(q) || (d.id || '').toLowerCase().includes(q);
       if (match) n.removeClass('faded');
       else       n.addClass('faded');
@@ -368,6 +405,7 @@
   }
 
   function clearSearch() {
+    _searchActive = false;
     window._cortexSearchQuery = '';
     if (_cy) _cy.nodes().removeClass('faded');
   }
