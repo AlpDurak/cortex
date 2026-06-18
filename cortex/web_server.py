@@ -1,9 +1,9 @@
 """
-Cortex Web Server - FastAPI app that:
-  - Serves the static VS Code-style UI
-  - Exposes REST endpoints the frontend uses to load graph data
-  - Maintains a WebSocket hub for live graph push from write_system_design_node
-  - Injects the WebSocket broadcast hook into the MCP server module
+Cortex Web Server - multi-project FastAPI app.
+
+Each project is held in a Registry as a ProjectState (its own DatabaseManager +
+WebSocket Hub). Routes select a project via the `?project=<id>` query param,
+defaulting to the primary project the server booted with.
 
 Run:
     cortex run [--root /path/to/project] [--port 7842]
@@ -12,78 +12,37 @@ Run:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import base64
 import json
-import sys
+import os
 from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-# ---------------------------------------------------------------------------
-# Resolve paths
-# ---------------------------------------------------------------------------
+from cortex.registry import Registry, ProjectState
 
-_HERE = Path(__file__).parent          # cortex/
-_REPO = _HERE.parent                   # project root (cortex repo)
+_HERE = Path(__file__).parent
+_REPO = _HERE.parent
 _STATIC = _REPO / "static"
 
 
 def _build_app(project_root: Path) -> FastAPI:
-    from core.db import DatabaseManager
-    from core.graph_api import get_neighborhood, find_path, compute_diff
-    from core.project_info import get_project_name, find_favicon
     import cortex.mcp_server as mcp_mod
 
-    project_name = get_project_name(project_root)
-    favicon_path = find_favicon(project_root)
+    registry = Registry()
+    primary = registry.register(project_root)
 
-    mgr = DatabaseManager(project_root)
-    mgr.init()
-
-    # Wire WebSocket broadcast into the MCP server
-    mcp_mod.PROJECT_ROOT = project_root
-    mcp_mod._mgr = mgr
-
-    # ---------------------------------------------------------------------------
-    # WebSocket hub
-    # ---------------------------------------------------------------------------
-
-    class _Hub:
-        def __init__(self):
-            self._clients: list[WebSocket] = []
-
-        async def connect(self, ws: WebSocket):
-            await ws.accept()
-            self._clients.append(ws)
-
-        def disconnect(self, ws: WebSocket):
-            self._clients = [c for c in self._clients if c is not ws]
-
-        async def broadcast(self, message: str):
-            dead = []
-            for client in self._clients:
-                try:
-                    await client.send_text(message)
-                except Exception:
-                    dead.append(client)
-            for d in dead:
-                self._clients.remove(d)
-
-    hub = _Hub()
-    mcp_mod.set_ws_broadcast(hub.broadcast)
-
-    # ---------------------------------------------------------------------------
-    # FastAPI app
-    # ---------------------------------------------------------------------------
+    # Wire the MCP module + WebSocket broadcast to the PRIMARY project only.
+    mcp_mod.PROJECT_ROOT = primary.root
+    mcp_mod._mgr = primary.mgr
+    mcp_mod.set_ws_broadcast(primary.hub.broadcast)
 
     app = FastAPI(title="Cortex", docs_url=None, redoc_url=None)
 
-    # Serve static files with no-cache headers so JS updates are picked up immediately
     if _STATIC.exists():
         from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -92,199 +51,199 @@ def _build_app(project_root: Path) -> FastAPI:
                 response = await call_next(request)
                 if request.url.path.startswith("/static/"):
                     response.headers["Cache-Control"] = "no-store"
-                    if "ETag" in response.headers:
-                        del response.headers["ETag"]
-                    if "Last-Modified" in response.headers:
-                        del response.headers["Last-Modified"]
+                    response.headers.pop("ETag", None)
+                    response.headers.pop("Last-Modified", None)
                 return response
 
         app.add_middleware(_NoCacheStatic)
         app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 
-    # ------------------------------------------------------------------
-    # Favicon
-    # ------------------------------------------------------------------
+    def _resolve(project: str | None) -> ProjectState:
+        if project:
+            st = registry.get(project)
+            if st is None:
+                raise HTTPException(status_code=404, detail=f"Unknown project: {project}")
+            return st
+        st = registry.primary
+        if st is None:
+            raise HTTPException(status_code=404, detail="No projects registered")
+        return st
+
+    async def _broadcast_projects():
+        msg = json.dumps({"event": "projects"})
+        for st in registry.list():
+            await st.hub.broadcast(msg)
+
+    # ---- project management ----
+
+    @app.get("/api/health")
+    async def api_health():
+        return JSONResponse({
+            "status": "ok",
+            "pid": os.getpid(),
+            "projects": [{"id": s.id, "name": s.name} for s in registry.list()],
+        })
+
+    @app.get("/api/projects")
+    async def api_projects():
+        return JSONResponse([
+            {"id": s.id, "name": s.name, "root": str(s.root)} for s in registry.list()
+        ])
+
+    @app.post("/api/projects/register")
+    async def api_projects_register(body: dict[str, Any]):
+        root = body.get("root")
+        if not root:
+            raise HTTPException(status_code=400, detail="Missing 'root'")
+        path = Path(root).resolve()
+        if not path.exists():
+            raise HTTPException(status_code=400, detail=f"Path does not exist: {path}")
+        st = registry.register(path)
+        await _broadcast_projects()
+        return JSONResponse({"id": st.id, "name": st.name})
+
+    @app.delete("/api/projects/{pid}")
+    async def api_projects_delete(pid: str):
+        if registry.get(pid) is None:
+            raise HTTPException(status_code=404, detail=f"Unknown project: {pid}")
+        if not registry.remove(pid):
+            raise HTTPException(status_code=409, detail="Cannot remove the last project")
+        await _broadcast_projects()
+        return JSONResponse({"ok": True})
+
+    # ---- favicon ----
 
     @app.get("/favicon.ico", include_in_schema=False)
-    async def favicon():
-        if favicon_path and favicon_path.exists():
+    async def favicon(project: str | None = None):
+        st = _resolve(project)
+        fp = st.favicon_path
+        if fp and fp.exists():
             media = "image/x-icon"
-            if favicon_path.suffix == ".png":
+            if fp.suffix == ".png":
                 media = "image/png"
-            elif favicon_path.suffix == ".svg":
+            elif fp.suffix == ".svg":
                 media = "image/svg+xml"
-            return FileResponse(str(favicon_path), media_type=media)
+            return FileResponse(str(fp), media_type=media)
         return Response(status_code=204)
 
-    # ------------------------------------------------------------------
-    # REST: meta
-    # ------------------------------------------------------------------
+    # ---- meta ----
 
     @app.get("/api/meta")
-    async def api_meta():
+    async def api_meta(project: str | None = None):
+        st = _resolve(project)
         favicon_b64 = None
         favicon_mime = None
-        if favicon_path and favicon_path.exists():
-            raw = favicon_path.read_bytes()
+        if st.favicon_path and st.favicon_path.exists():
+            raw = st.favicon_path.read_bytes()
             favicon_b64 = base64.b64encode(raw).decode()
-            ext = favicon_path.suffix.lower()
+            ext = st.favicon_path.suffix.lower()
             favicon_mime = {
                 ".ico": "image/x-icon",
                 ".png": "image/png",
                 ".svg": "image/svg+xml",
             }.get(ext, "image/png")
         return JSONResponse({
-            "project_name": project_name,
+            "project_id": st.id,
+            "project_name": st.name,
             "favicon_b64": favicon_b64,
             "favicon_mime": favicon_mime,
         })
 
-    # ------------------------------------------------------------------
-    # REST: timeline
-    # ------------------------------------------------------------------
-
     @app.get("/api/timeline")
-    async def api_timeline():
-        return JSONResponse(mgr.get_timeline())
-
-    # ------------------------------------------------------------------
-    # REST: graph (all nodes + edges for a given slot)
-    # ------------------------------------------------------------------
+    async def api_timeline(project: str | None = None):
+        return JSONResponse(_resolve(project).mgr.get_timeline())
 
     @app.get("/api/graph")
-    async def api_graph(slot: int = 0):
-        """
-        Return all nodes and edges for a snapshot slot.
-        slot=0 (default) means the live database.
-        """
-        from core.graph_api import NODE_TABLES, REL_TABLES, _rows, _get_all_nodes, _get_all_edges
-
-        if slot == 0:
-            conn = mgr.conn
-        else:
-            conn = mgr.open_version_conn(slot)
-
+    async def api_graph(slot: int = 0, project: str | None = None):
+        from core.graph_api import _get_all_nodes, _get_all_edges
+        st = _resolve(project)
+        conn = st.mgr.conn if slot == 0 else st.mgr.open_version_conn(slot)
         nodes = list(_get_all_nodes(conn).values())
         raw_edges = _get_all_edges(conn)
-        edges = [
-            {"src": k[0], "rel": k[1], "dst": k[2], **v}
-            for k, v in raw_edges.items()
-        ]
+        edges = [{"src": k[0], "rel": k[1], "dst": k[2], **v} for k, v in raw_edges.items()]
         return JSONResponse({"nodes": nodes, "edges": edges})
 
-    # ------------------------------------------------------------------
-    # REST: diff between two slots
-    # ------------------------------------------------------------------
-
     @app.get("/api/diff")
-    async def api_diff(from_slot: int, to_slot: int):
+    async def api_diff(from_slot: int, to_slot: int, project: str | None = None):
+        from core.graph_api import compute_diff
+        st = _resolve(project)
         try:
-            diff = compute_diff(mgr, from_slot, to_slot)
+            diff = compute_diff(st.mgr, from_slot, to_slot)
         except FileNotFoundError as exc:
             return JSONResponse({"error": str(exc)}, status_code=404)
         return JSONResponse(diff)
 
-    # ------------------------------------------------------------------
-    # REST: neighborhood
-    # ------------------------------------------------------------------
-
     @app.get("/api/neighborhood")
-    async def api_neighborhood(node_id: str, depth: int = 1):
-        result = get_neighborhood(mgr.conn, node_id, depth=depth)
-        return JSONResponse(result)
-
-    # ------------------------------------------------------------------
-    # REST: path
-    # ------------------------------------------------------------------
+    async def api_neighborhood(node_id: str, depth: int = 1, project: str | None = None):
+        from core.graph_api import get_neighborhood
+        return JSONResponse(get_neighborhood(_resolve(project).mgr.conn, node_id, depth=depth))
 
     @app.get("/api/path")
-    async def api_path(start: str, end: str):
-        result = find_path(mgr.conn, start, end)
-        return JSONResponse(result)
-
-    # ------------------------------------------------------------------
-    # REST: commit snapshot
-    # ------------------------------------------------------------------
+    async def api_path(start: str, end: str, project: str | None = None):
+        from core.graph_api import find_path
+        return JSONResponse(find_path(_resolve(project).mgr.conn, start, end))
 
     @app.post("/api/commit")
-    async def api_commit(body: dict[str, Any] = {}):
+    async def api_commit(body: dict[str, Any] = {}, project: str | None = None):
+        st = _resolve(project)
         message = body.get("message", "Manual commit from UI")
-        entry = mgr.commit_snapshot(message)
-        await hub.broadcast(json.dumps({"event": "snapshot", "entry": entry}))
+        entry = st.mgr.commit_snapshot(message)
+        await st.hub.broadcast(json.dumps({"event": "snapshot", "entry": entry}))
         return JSONResponse(entry)
 
     @app.get("/api/trail")
-    async def api_trail(limit: int = 100):
-        trail_path = project_root / ".cortex" / "trail.jsonl"
-        if not trail_path.exists():
-            return JSONResponse([])
-        entries = []
-        for line in trail_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    entries.append(json.loads(line))
-                except Exception:
-                    pass
-        return JSONResponse(entries[-limit:])
+    async def api_trail(limit: int = 100, project: str | None = None):
+        return JSONResponse(_read_jsonl(_resolve(project).root / ".cortex" / "trail.jsonl", limit))
 
     @app.get("/api/search")
-    async def api_search(q: str = "", top_n: int = 20):
+    async def api_search(q: str = "", top_n: int = 20, project: str | None = None):
         if not q:
             return JSONResponse([])
         from core.analysis import pulse_search
-        return JSONResponse(pulse_search(mgr.conn, q, top_n=top_n))
+        return JSONResponse(pulse_search(_resolve(project).mgr.conn, q, top_n=top_n))
 
     @app.get("/api/clusters")
-    async def api_clusters():
+    async def api_clusters(project: str | None = None):
         from core.analysis import detect_signal_clusters
-        clusters = detect_signal_clusters(mgr.conn, project_root)
-        return JSONResponse(clusters)
+        st = _resolve(project)
+        return JSONResponse(detect_signal_clusters(st.mgr.conn, st.root))
 
     @app.get("/api/keystones")
-    async def api_keystones(top_n: int = 10):
+    async def api_keystones(top_n: int = 10, project: str | None = None):
         from core.analysis import get_keystones
-        return JSONResponse(get_keystones(mgr.conn, top_n=top_n))
+        return JSONResponse(get_keystones(_resolve(project).mgr.conn, top_n=top_n))
 
     @app.get("/api/latent-bridges")
-    async def api_latent_bridges(top_n: int = 20):
+    async def api_latent_bridges(top_n: int = 20, project: str | None = None):
         from core.analysis import get_latent_bridges
-        return JSONResponse(get_latent_bridges(mgr.conn, project_root, top_n=top_n))
+        st = _resolve(project)
+        return JSONResponse(get_latent_bridges(st.mgr.conn, st.root, top_n=top_n))
 
     @app.get("/api/ledger")
-    async def api_ledger(limit: int = 200):
-        ledger_path = project_root / ".cortex" / "ledger.jsonl"
-        if not ledger_path.exists():
-            return JSONResponse([])
-        entries = []
-        for line in ledger_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    entries.append(json.loads(line))
-                except Exception:
-                    pass
-        return JSONResponse(entries[-limit:])
+    async def api_ledger(limit: int = 200, project: str | None = None):
+        return JSONResponse(_read_jsonl(_resolve(project).root / ".cortex" / "ledger.jsonl", limit))
 
     @app.get("/api/brief")
-    async def api_brief():
+    async def api_brief(project: str | None = None):
         from core.analysis import generate_brief
-        return JSONResponse({"brief": generate_brief(mgr.conn, project_root)})
+        st = _resolve(project)
+        return JSONResponse({"brief": generate_brief(st.mgr.conn, st.root)})
 
     @app.post("/api/export")
-    async def api_export(body: dict[str, Any] = {}):
-        fmt = body.get("format", "graphml")
+    async def api_export(body: dict[str, Any] = {}, project: str | None = None):
         from core.export import export_graphml, export_obsidian, export_wiki, export_svg
+        st = _resolve(project)
+        fmt = body.get("format", "graphml")
         if fmt == "graphml":
-            return Response(content=export_graphml(mgr.conn), media_type="application/xml")
+            return Response(content=export_graphml(st.mgr.conn), media_type="application/xml")
         elif fmt == "svg":
-            return Response(content=export_svg(mgr.conn), media_type="image/svg+xml")
+            return Response(content=export_svg(st.mgr.conn), media_type="image/svg+xml")
         elif fmt == "wiki":
-            return Response(content=export_wiki(mgr.conn, project_root), media_type="text/markdown")
+            return Response(content=export_wiki(st.mgr.conn, st.root), media_type="text/markdown")
         elif fmt == "obsidian":
             import tempfile, zipfile, io
             with tempfile.TemporaryDirectory() as tmpdir:
-                export_obsidian(mgr.conn, Path(tmpdir))
+                export_obsidian(st.mgr.conn, Path(tmpdir))
                 buf = io.BytesIO()
                 with zipfile.ZipFile(buf, "w") as zf:
                     for f in Path(tmpdir).glob("*.md"):
@@ -297,36 +256,29 @@ def _build_app(project_root: Path) -> FastAPI:
                 )
         return JSONResponse({"error": f"Unknown format: {fmt}"}, status_code=400)
 
-    # ------------------------------------------------------------------
-    # WebSocket
-    # ------------------------------------------------------------------
-
     @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket):
-        await hub.connect(ws)
+    async def websocket_endpoint(ws: WebSocket, project: str | None = None):
         try:
-            # Send current graph immediately on connect
+            st = _resolve(project)
+        except HTTPException:
+            await ws.close(code=1008)
+            return
+        await st.hub.connect(ws)
+        try:
             from core.graph_api import _get_all_nodes, _get_all_edges
-            nodes = list(_get_all_nodes(mgr.conn).values())
-            raw_edges = _get_all_edges(mgr.conn)
-            edges = [
-                {"src": k[0], "rel": k[1], "dst": k[2]}
-                for k in raw_edges
-            ]
+            nodes = list(_get_all_nodes(st.mgr.conn).values())
+            raw_edges = _get_all_edges(st.mgr.conn)
+            edges = [{"src": k[0], "rel": k[1], "dst": k[2]} for k in raw_edges]
             await ws.send_text(json.dumps({
                 "event": "init",
                 "nodes": nodes,
                 "edges": edges,
-                "timeline": mgr.get_timeline(),
+                "timeline": st.mgr.get_timeline(),
             }))
             while True:
-                await ws.receive_text()   # keep alive; client can send pings
+                await ws.receive_text()
         except WebSocketDisconnect:
-            hub.disconnect(ws)
-
-    # ------------------------------------------------------------------
-    # Main UI (served last so all API routes take priority)
-    # ------------------------------------------------------------------
+            st.hub.disconnect(ws)
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_ui(full_path: str):
@@ -338,9 +290,19 @@ def _build_app(project_root: Path) -> FastAPI:
     return app
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+def _read_jsonl(path: Path, limit: int) -> list:
+    if not path.exists():
+        return []
+    entries = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            try:
+                entries.append(json.loads(line))
+            except Exception:
+                pass
+    return entries[-limit:]
+
 
 def main():
     parser = argparse.ArgumentParser(description="Cortex web server")
@@ -348,9 +310,7 @@ def main():
     parser.add_argument("--port", type=int, default=7842, help="HTTP port")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     args = parser.parse_args()
-
-    project_root = Path(args.root).resolve()
-    app = _build_app(project_root)
+    app = _build_app(Path(args.root).resolve())
     uvicorn.run(app, host=args.host, port=args.port)
 
 
