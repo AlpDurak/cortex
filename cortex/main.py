@@ -197,20 +197,55 @@ def _cmd_run(args: argparse.Namespace) -> None:
         print(f"error: directory does not exist: {root}", file=sys.stderr)
         sys.exit(1)
 
+    from cortex import server_lock
+
+    lock = server_lock.read_lock()
+    action = server_lock.decide(lock, server_lock.probe_health)
+
+    if action == "attach":
+        import json as _json
+        import urllib.request
+        import webbrowser
+
+        host = lock.get("host", "127.0.0.1")
+        port = int(lock.get("port", 7842))
+        data = _json.dumps({"root": str(root)}).encode("utf-8")
+        req = urllib.request.Request(
+            f"http://{host}:{port}/api/projects/register",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                info = _json.loads(resp.read().decode())
+        except Exception as exc:
+            print(f"error: could not attach to running Cortex server: {exc}", file=sys.stderr)
+            sys.exit(1)
+        url = f"http://{host}:{port}/?project={info['id']}"
+        print(f"Attached {info['name']}  ->  {url}")
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+        return
+
+    # action == "start"
     import uvicorn
     from cortex.web_server import _build_app
 
     if not _port_available(args.host, args.port):
-        print(
-            f"error: port {args.port} is already in use on {args.host}.",
-            file=sys.stderr,
-        )
+        print(f"error: port {args.port} is already in use on {args.host}.", file=sys.stderr)
         print(f"Try: cortex run --port {args.port + 1}", file=sys.stderr)
         sys.exit(1)
 
+    server_lock.write_lock(args.host, args.port)
     app = _build_app(root)
     print(f"Cortex  ->  http://{args.host}:{args.port}  (project: {root})")
-    uvicorn.run(app, host=args.host, port=args.port)
+    try:
+        uvicorn.run(app, host=args.host, port=args.port)
+    finally:
+        server_lock.clear_lock()
 
 
 def _cmd_mcp(args: argparse.Namespace) -> None:
