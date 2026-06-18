@@ -59,7 +59,7 @@ $C = @{
     reset   = "$ESC[0m";  dim    = "$ESC[2m";  bold   = "$ESC[1m"
     red     = "$ESC[31m"; green  = "$ESC[32m"; yellow = "$ESC[33m"
     blue    = "$ESC[34m"; magenta= "$ESC[35m"; cyan   = "$ESC[36m"
-    inverse = "$ESC[7m"
+    orange  = "$ESC[38;2;249;115;22m"; inverse = "$ESC[7m"
 }
 
 function Show-Banner {
@@ -72,7 +72,7 @@ function Show-Banner {
         " ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝"
     )
     Write-Host ""
-    foreach ($line in $logo) { Write-Host "$($C.cyan)$($C.bold)$line$($C.reset)" }
+    foreach ($line in $logo) { Write-Host "$($C.orange)$($C.bold)$line$($C.reset)" }
     Write-Host "$($C.dim)        knowledge-graph memory for your codebase$($C.reset)"
     Write-Host ""
 }
@@ -83,13 +83,13 @@ function Write-Step($label) {
     $script:StepNo++
     $n = "[$($script:StepNo)/$($script:StepTotal)]"
     Write-Host ""
-    Write-Host "$($C.magenta)$($C.bold)$n$($C.reset) $($C.bold)$label$($C.reset)"
+    Write-Host "$($C.orange)$($C.bold)$n$($C.reset) $($C.bold)$label$($C.reset)"
     Write-Host "$($C.dim)──────────────────────────────────────────────────$($C.reset)"
 }
 
 function Write-Ok($msg)   { Write-Host "  $($C.green)✓$($C.reset) $msg" }
 function Write-Warn($msg)  { Write-Host "  $($C.yellow)!$($C.reset) $msg" }
-function Write-Info($msg)  { Write-Host "  $($C.cyan)→$($C.reset) $msg" }
+function Write-Info($msg)  { Write-Host "  $($C.orange)→$($C.reset) $msg" }
 function Write-Skip($msg)  { Write-Host "  $($C.dim)·  $msg$($C.reset)" }
 function Write-Fail($msg)  { Write-Host "  $($C.red)✗$($C.reset) $msg"; exit 1 }
 
@@ -110,7 +110,7 @@ function Invoke-Spinner {
     $i = 0
     while (-not $async.IsCompleted) {
         $f = $frames[$i % $frames.Count]
-        Write-Host -NoNewline "`r  $($C.cyan)$f$($C.reset) $Label   "
+        Write-Host -NoNewline "`r  $($C.orange)$f$($C.reset) $Label   "
         Start-Sleep -Milliseconds 90
         $i++
     }
@@ -145,8 +145,8 @@ function Show-Multiselect {
 
     function Format-Row($item, $isCur) {
         $glyph = if ($item.Checked) { "$($C.green)◈$($C.reset)" } else { "$($C.dim)◇$($C.reset)" }
-        $pointer = if ($isCur) { "$($C.cyan)›$($C.reset)" } else { " " }
-        $label = if ($isCur) { "$($C.cyan)$($C.bold)$($item.Label)$($C.reset)" } else { $item.Label }
+        $pointer = if ($isCur) { "$($C.orange)›$($C.reset)" } else { " " }
+        $label = if ($isCur) { "$($C.orange)$($C.bold)$($item.Label)$($C.reset)" } else { $item.Label }
         $hint = if ($item.Hint) { " $($C.dim)$($item.Hint)$($C.reset)" } else { "" }
         return " $pointer $glyph  $label$hint"
     }
@@ -325,7 +325,7 @@ if os.path.exists(path):
             config = json.load(f)
     except json.JSONDecodeError:
         os.rename(path, path + ".bak")
-config.setdefault("mcpServers", {})["cortex"] = {"command": cortex_bin, "args": ["mcp"]}
+config.setdefault("mcpServers", {})["cortex"] = {"type": "stdio", "command": cortex_bin, "args": ["mcp"]}
 with open(path, "w") as f:
     json.dump(config, f, indent=2)
     f.write("\n")
@@ -340,10 +340,28 @@ with open(path, "w") as f:
     }
 }
 
+# Claude Code loads user-scoped MCP servers from ~/.claude.json (NOT
+# ~/.claude/settings.json), so it needs its own configuration path.
+function Configure-ClaudeMcp {
+    $claudeJson = Join-Path $env:USERPROFILE ".claude.json"
+    $claudeCli = Get-Command claude -ErrorAction SilentlyContinue
+    if ($claudeCli) {
+        & claude mcp remove cortex --scope user 2>$null | Out-Null
+        & claude mcp add cortex --scope user -- $script:VENV_CORTEX mcp 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "MCP server  $($C.dim)$claudeJson (claude mcp add)$($C.reset)"
+            return
+        }
+    }
+    # Fallback: merge directly into ~/.claude.json.
+    Write-JsonMcpConfig $claudeJson
+    Write-Ok "MCP server  $($C.dim)$claudeJson$($C.reset)"
+}
+
 # Supported tools. Each: Key, Label, Dir, McpFile, plus install flags.
 function Get-ToolRegistry {
     @(
-        @{ Key="claude"; Label="Claude Code"; Dir="$env:USERPROFILE\.claude"; McpFile="settings.json"; Skill=$true;  Agents=$false }
+        @{ Key="claude"; Label="Claude Code"; Dir="$env:USERPROFILE\.claude"; McpFile=$null;          Skill=$true;  Agents=$false }
         @{ Key="cursor"; Label="Cursor";      Dir="$env:USERPROFILE\.cursor"; McpFile="mcp.json";      Skill=$false; Agents=$true  }
         @{ Key="gemini"; Label="Gemini CLI";  Dir="$env:USERPROFILE\.gemini"; McpFile="settings.json"; Skill=$false; Agents=$true  }
         @{ Key="codex";  Label="Codex CLI";   Dir="$env:USERPROFILE\.codex";  McpFile="config.json";   Skill=$false; Agents=$true  }
@@ -355,12 +373,16 @@ function Install-Tool($tool) {
     Write-Host "  $($C.bold)$($tool.Label)$($C.reset)"
     New-Item -ItemType Directory -Force -Path $tool.Dir | Out-Null
 
-    $mcpPath = Join-Path $tool.Dir $tool.McpFile
-    try {
-        Write-JsonMcpConfig $mcpPath
-        Write-Ok "MCP server  $($C.dim)$mcpPath$($C.reset)"
-    } catch {
-        Write-Warn "MCP config failed: $($_.Exception.Message)"
+    if ($tool.Key -eq "claude") {
+        Configure-ClaudeMcp
+    } else {
+        $mcpPath = Join-Path $tool.Dir $tool.McpFile
+        try {
+            Write-JsonMcpConfig $mcpPath
+            Write-Ok "MCP server  $($C.dim)$mcpPath$($C.reset)"
+        } catch {
+            Write-Warn "MCP config failed: $($_.Exception.Message)"
+        }
     }
 
     if ($tool.Skill) {
@@ -435,10 +457,10 @@ function Print-Summary {
 
     Write-Host ""
     Write-Host "  $($C.bold)Usage$($C.reset) $($C.dim)(from any project directory)$($C.reset)"
-    Write-Host "    $($C.cyan)cortex init$($C.reset)   Initialize the knowledge graph for this project"
-    Write-Host "    $($C.cyan)cortex run$($C.reset)    Start the web UI  $($C.dim)→  http://localhost:7842$($C.reset)"
+    Write-Host "    $($C.orange)cortex init$($C.reset)   Initialize the knowledge graph for this project"
+    Write-Host "    $($C.orange)cortex run$($C.reset)    Start the web UI  $($C.dim)→  http://localhost:7842$($C.reset)"
     Write-Host ""
-    Write-Host "  $($C.yellow)!$($C.reset) Open a new terminal for $($C.cyan)cortex$($C.reset) to be on your PATH."
+    Write-Host "  $($C.yellow)!$($C.reset) Open a new terminal for $($C.orange)cortex$($C.reset) to be on your PATH."
     Write-Host ""
 }
 

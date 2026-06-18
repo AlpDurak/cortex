@@ -40,24 +40,25 @@ if [ -t 1 ] || [ -e /dev/tty ]; then
   NC="${ESC}[0m"; DIM="${ESC}[2m"; BOLD="${ESC}[1m"
   RED="${ESC}[31m"; GREEN="${ESC}[32m"; YELLOW="${ESC}[33m"
   BLUE="${ESC}[34m"; MAGENTA="${ESC}[35m"; CYAN="${ESC}[36m"
+  ORANGE="${ESC}[38;2;249;115;22m"
 else
-  ESC=""; NC=""; DIM=""; BOLD=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; MAGENTA=""; CYAN=""
+  ESC=""; NC=""; DIM=""; BOLD=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; MAGENTA=""; CYAN=""; ORANGE=""
 fi
 
 ok()   { printf "  ${GREEN}✓${NC} %b\n" "$*"; }
 warn() { printf "  ${YELLOW}!${NC} %b\n" "$*"; }
-info() { printf "  ${CYAN}→${NC} %b\n" "$*"; }
+info() { printf "  ${ORANGE}→${NC} %b\n" "$*"; }
 skip() { printf "  ${DIM}·  %b${NC}\n" "$*"; }
 fail() { printf "  ${RED}✗${NC} %b\n" "$*"; exit 1; }
 
 show_banner() {
   printf "\n"
-  printf "${CYAN}${BOLD}%s${NC}\n" " ██████╗ ██████╗ ██████╗ ████████╗███████╗██╗  ██╗"
-  printf "${CYAN}${BOLD}%s${NC}\n" "██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝╚██╗██╔╝"
-  printf "${CYAN}${BOLD}%s${NC}\n" "██║     ██║   ██║██████╔╝   ██║   █████╗   ╚███╔╝ "
-  printf "${CYAN}${BOLD}%s${NC}\n" "██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗ "
-  printf "${CYAN}${BOLD}%s${NC}\n" "╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗"
-  printf "${CYAN}${BOLD}%s${NC}\n" " ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝"
+  printf "${ORANGE}${BOLD}%s${NC}\n" " ██████╗ ██████╗ ██████╗ ████████╗███████╗██╗  ██╗"
+  printf "${ORANGE}${BOLD}%s${NC}\n" "██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝╚██╗██╔╝"
+  printf "${ORANGE}${BOLD}%s${NC}\n" "██║     ██║   ██║██████╔╝   ██║   █████╗   ╚███╔╝ "
+  printf "${ORANGE}${BOLD}%s${NC}\n" "██║     ██║   ██║██╔══██╗   ██║   ██╔══╝   ██╔██╗ "
+  printf "${ORANGE}${BOLD}%s${NC}\n" "╚██████╗╚██████╔╝██║  ██║   ██║   ███████╗██╔╝ ██╗"
+  printf "${ORANGE}${BOLD}%s${NC}\n" " ╚═════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝"
   printf "${DIM}%s${NC}\n\n" "        knowledge-graph memory for your codebase"
 }
 
@@ -65,7 +66,7 @@ STEP_NO=0
 STEP_TOTAL=6
 step() {
   STEP_NO=$((STEP_NO + 1))
-  printf "\n${MAGENTA}${BOLD}[%d/%d]${NC} ${BOLD}%s${NC}\n" "$STEP_NO" "$STEP_TOTAL" "$1"
+  printf "\n${ORANGE}${BOLD}[%d/%d]${NC} ${BOLD}%s${NC}\n" "$STEP_NO" "$STEP_TOTAL" "$1"
   printf "${DIM}──────────────────────────────────────────────────${NC}\n"
 }
 
@@ -78,7 +79,7 @@ spin() {
   local frames='\|/-' i=0
   printf "${ESC}[?25l" 2>/dev/null || true
   while kill -0 "$pid" 2>/dev/null; do
-    printf "\r  ${CYAN}%s${NC} %s   " "${frames:i++%4:1}" "$label"
+    printf "\r  ${ORANGE}%s${NC} %s   " "${frames:i++%4:1}" "$label"
     sleep 0.1
   done
   local status=0
@@ -104,7 +105,7 @@ multiselect() {
     local idx=$1 glyph pointer label
     if [ "${MS_CHECKED[$idx]}" -eq 1 ]; then glyph="${GREEN}◈${NC}"; else glyph="${DIM}◇${NC}"; fi
     if [ "$idx" -eq "$cur" ]; then
-      pointer="${CYAN}›${NC}"; label="${CYAN}${BOLD}${MS_LABELS[$idx]}${NC}"
+      pointer="${ORANGE}›${NC}"; label="${ORANGE}${BOLD}${MS_LABELS[$idx]}${NC}"
     else
       pointer=" "; label="${MS_LABELS[$idx]}"
     fi
@@ -256,7 +257,7 @@ if os.path.exists(path):
             config = json.load(f)
     except json.JSONDecodeError:
         os.rename(path, path + ".bak")
-config.setdefault("mcpServers", {})["cortex"] = {"command": cortex_bin, "args": ["mcp"]}
+config.setdefault("mcpServers", {})["cortex"] = {"type": "stdio", "command": cortex_bin, "args": ["mcp"]}
 with open(path, "w") as f:
     json.dump(config, f, indent=2)
     f.write("\n")
@@ -270,6 +271,25 @@ tool_mcpfile() { case "$1" in claude) echo "settings.json";; cursor) echo "mcp.j
 tool_skill()   { [ "$1" = "claude" ]; }
 tool_agents()  { [ "$1" != "claude" ]; }
 
+# Claude Code loads user-scoped MCP servers from ~/.claude.json (NOT
+# ~/.claude/settings.json), so it needs its own configuration path.
+configure_claude_mcp() {
+  local claude_json="$HOME/.claude.json"
+  if command -v claude >/dev/null 2>&1; then
+    claude mcp remove cortex --scope user >/dev/null 2>&1 || true
+    if claude mcp add cortex --scope user -- "$VENV_CORTEX" mcp >/dev/null 2>&1; then
+      ok "MCP server   ${DIM}${claude_json} (claude mcp add)${NC}"
+      return
+    fi
+  fi
+  # Fallback: merge directly into ~/.claude.json.
+  if write_json_mcp_config "$claude_json" >/dev/null 2>&1; then
+    ok "MCP server   ${DIM}${claude_json}${NC}"
+  else
+    warn "MCP config failed for ${claude_json}"
+  fi
+}
+
 INSTALLED_TOOLS=()
 install_tool() {
   local key="$1" dir mcp
@@ -277,11 +297,15 @@ install_tool() {
   printf "\n  ${BOLD}%s${NC}\n" "$(tool_label "$key")"
   mkdir -p "$dir"
 
-  mcp="$dir/$(tool_mcpfile "$key")"
-  if write_json_mcp_config "$mcp" >/dev/null 2>&1; then
-    ok "MCP server   ${DIM}${mcp}${NC}"
+  if [ "$key" = "claude" ]; then
+    configure_claude_mcp
   else
-    warn "MCP config failed for ${mcp}"
+    mcp="$dir/$(tool_mcpfile "$key")"
+    if write_json_mcp_config "$mcp" >/dev/null 2>&1; then
+      ok "MCP server   ${DIM}${mcp}${NC}"
+    else
+      warn "MCP config failed for ${mcp}"
+    fi
   fi
 
   if tool_skill "$key"; then
@@ -351,9 +375,9 @@ print_summary() {
   fi
 
   printf "\n  ${BOLD}Usage${NC} ${DIM}(from any project directory)${NC}\n"
-  printf "    ${CYAN}cortex init${NC}   Initialize the knowledge graph for this project\n"
-  printf "    ${CYAN}cortex run${NC}    Start the web UI  ${DIM}→  http://localhost:7842${NC}\n"
-  printf "\n  ${YELLOW}!${NC} Open a new terminal for ${CYAN}cortex${NC} to be available on PATH.\n\n"
+  printf "    ${ORANGE}cortex init${NC}   Initialize the knowledge graph for this project\n"
+  printf "    ${ORANGE}cortex run${NC}    Start the web UI  ${DIM}→  http://localhost:7842${NC}\n"
+  printf "\n  ${YELLOW}!${NC} Open a new terminal for ${ORANGE}cortex${NC} to be available on PATH.\n\n"
 }
 
 # ---------------------------------------------------------------------------

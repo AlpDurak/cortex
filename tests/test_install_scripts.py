@@ -45,6 +45,20 @@ class InstallScriptTests(unittest.TestCase):
         self.assertIn('"$PYTHON_CMD" -m venv --without-pip "$INSTALL_DIR/.venv"', script)
         self.assertIn("-m ensurepip --upgrade --default-pip", script)
 
+    def test_windows_installer_configures_claude_mcp_in_claude_json(self):
+        script = read_installer("install.ps1")
+
+        # Claude Code loads user MCP servers from ~/.claude.json, NOT
+        # ~/.claude/settings.json. The installer must target the right place.
+        self.assertIn("claude mcp add", script)
+        self.assertIn(".claude.json", script)
+
+    def test_unix_installer_configures_claude_mcp_in_claude_json(self):
+        script = read_installer("install.sh")
+
+        self.assertIn("claude mcp add", script)
+        self.assertIn(".claude.json", script)
+
     def test_unix_installer_adds_local_bin_to_shell_startup_files(self):
         script = read_installer("install.sh")
 
