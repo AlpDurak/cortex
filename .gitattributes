@@ -1,0 +1,5 @@
+# Shell scripts must stay LF so they run on macOS/Linux.
+*.sh text eol=lf
+
+# PowerShell scripts: CRLF, and they may carry a UTF-8 BOM (needed by PS 5.1).
+*.ps1 text eol=crlf
