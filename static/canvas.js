@@ -441,7 +441,7 @@
       });
       d3.select(ev.currentTarget)
         .select(".nd-rect")
-        .attr("stroke", "#6366f1")
+        .attr("stroke", "#f97316")
         .attr("stroke-width", d._m.hub ? 3 : 2.5);
       if (window.CortexUI?.onNodeClick) window.CortexUI.onNodeClick(d.id);
     });
@@ -608,7 +608,7 @@
         return this.dataset.id === nodeId;
       })
       .select(".nd-rect")
-      .attr("stroke", "#6366f1")
+      .attr("stroke", "#f97316")
       .attr("stroke-width", 3);
   }
 
