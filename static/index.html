@@ -280,7 +280,11 @@
   </div>
   <span id="header-title">Cortex</span>
   <span id="header-sep">/</span>
-  <span id="header-project"></span>
+  <span id="header-project-wrap" style="position:relative; display:inline-flex; align-items:center; gap:4px; cursor:pointer;">
+    <span id="header-project"></span>
+    <span id="project-caret" style="font-size:10px; color:var(--text-muted);">▾</span>
+    <div id="project-menu" style="display:none; position:absolute; top:22px; left:0; min-width:200px; background:var(--bg, #fff); border:1px solid var(--border, #e5e7eb); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:50; padding:4px;"></div>
+  </span>
   <div id="header-spacer"></div>
 
   <div style="position:relative">
@@ -378,17 +382,93 @@
 let _ws = null, _nodes = [], _edges = [], _timeline = [];
 let _selectedSlot = 0, _selectedNodeId = null, _diffData = null;
 
+let _projects = [];
+let _activeId = new URLSearchParams(location.search).get('project') || null;
+
+function api(path) {
+  if (!_activeId) return path;
+  return path + (path.includes('?') ? '&' : '?') + 'project=' + encodeURIComponent(_activeId);
+}
+
+async function loadProjects() {
+  try {
+    const r = await fetch('/api/projects');
+    _projects = await r.json();
+    if (!_activeId && _projects.length) _activeId = _projects[0].id;
+    renderProjectMenu();
+  } catch (e) { console.warn('Projects load failed:', e); }
+}
+
+function renderProjectMenu() {
+  const menu = document.getElementById('project-menu');
+  menu.innerHTML = '';
+  _projects.forEach(p => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 10px; border-radius:6px; font-size:13px;';
+    if (p.id === _activeId) { row.style.background = 'var(--accent-dim)'; row.style.color = 'var(--accent-h)'; }
+    const name = document.createElement('span');
+    name.textContent = p.name;
+    name.style.cssText = 'flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+    name.addEventListener('click', () => switchProject(p.id));
+    const x = document.createElement('span');
+    x.textContent = '×';
+    x.title = 'Detach project';
+    x.style.cssText = 'color:var(--text-muted); padding:0 4px; cursor:pointer;';
+    x.addEventListener('click', (ev) => { ev.stopPropagation(); closeProject(p.id); });
+    row.appendChild(name); row.appendChild(x);
+    menu.appendChild(row);
+  });
+}
+
+function toggleProjectMenu() {
+  const m = document.getElementById('project-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+
+async function switchProject(id) {
+  if (id === _activeId) { toggleProjectMenu(); return; }
+  _activeId = id;
+  const u = new URL(location.href);
+  u.searchParams.set('project', id);
+  history.replaceState(null, '', u);
+  document.getElementById('project-menu').style.display = 'none';
+  await loadMeta();
+  await loadTimeline();
+  await loadGraph(0);
+  if (window.CortexGraph) window.CortexGraph.render(_nodes, _edges, null);
+  if (_ws) { try { _ws.close(); } catch (e) {} }
+  connectWS();
+  renderProjectMenu();
+}
+
+async function closeProject(id) {
+  try {
+    const r = await fetch('/api/projects/' + id, { method: 'DELETE' });
+    if (r.status === 409) { alert('Cannot close the last project.'); return; }
+  } catch (e) { console.warn('Close failed:', e); }
+  await loadProjects();
+  if (id === _activeId) { _activeId = _projects.length ? _projects[0].id : null; await switchProject(_activeId); }
+}
+
 window.CortexUI = { onNodeClick, setDiff, setGraph, clearSearch };
 
 (async function init() {
+  await loadProjects();
   await loadMeta();
   await loadTimeline();
   connectWS();
+  document.getElementById('header-project-wrap').addEventListener('click', (ev) => {
+    if (ev.target.id === 'project-caret' || ev.target.id === 'header-project') toggleProjectMenu();
+  });
+  document.addEventListener('click', (ev) => {
+    const wrap = document.getElementById('header-project-wrap');
+    if (!wrap.contains(ev.target)) document.getElementById('project-menu').style.display = 'none';
+  });
 })();
 
 async function loadMeta() {
   try {
-    const r = await fetch('/api/meta');
+    const r = await fetch(api('/api/meta'));
     const meta = await r.json();
     document.title = 'Cortex — ' + meta.project_name;
     document.getElementById('header-project').textContent = meta.project_name;
@@ -405,7 +485,7 @@ async function loadMeta() {
 
 async function loadTimeline() {
   try {
-    const r = await fetch('/api/timeline');
+    const r = await fetch(api('/api/timeline'));
     _timeline = await r.json();
     renderTimeline();
   } catch(e) { console.warn('Timeline load failed:', e); }
@@ -445,9 +525,9 @@ async function selectSlot(slot) {
     await loadGraph(0);
     const currentSlot = _timeline.length > 0 ? _timeline[0].slot : null;
     if (currentSlot && currentSlot !== slot) {
-      const diffR = await fetch(`/api/diff?from_slot=${slot}&to_slot=${currentSlot}`);
+      const diffR = await fetch(api(`/api/diff?from_slot=${slot}&to_slot=${currentSlot}`));
       _diffData = await diffR.json();
-      const oldR = await fetch(`/api/graph?slot=${slot}`);
+      const oldR = await fetch(api(`/api/graph?slot=${slot}`));
       const oldData = await oldR.json();
       const liveIds = new Set(_nodes.map(n => n.id));
       for (const on of (oldData.nodes || [])) { if (!liveIds.has(on.id)) _nodes.push(on); }
@@ -467,7 +547,7 @@ async function selectSlot(slot) {
 }
 
 async function loadGraph(slot) {
-  const url = slot === 0 ? '/api/graph' : `/api/graph?slot=${slot}`;
+  const url = slot === 0 ? api('/api/graph') : api(`/api/graph?slot=${slot}`);
   try {
     const r = await fetch(url); const data = await r.json();
     _nodes = data.nodes || []; window._nodes = _nodes;
@@ -478,7 +558,7 @@ async function loadGraph(slot) {
 
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  _ws = new WebSocket(`${proto}://${location.host}/ws`);
+  _ws = new WebSocket(`${proto}://${location.host}/ws${_activeId ? '?project=' + encodeURIComponent(_activeId) : ''}`);
   const dot = document.getElementById('ws-dot'), label = document.getElementById('ws-label');
   _ws.onopen  = () => { dot.className = 'connected'; label.textContent = 'Connected'; };
   _ws.onclose = () => { dot.className = 'error'; label.textContent = 'Disconnected'; setTimeout(connectWS, 3000); };
@@ -487,6 +567,7 @@ function connectWS() {
 }
 
 function handleWSMessage(msg) {
+  if (msg.event === 'projects') { loadProjects(); return; }
   if (msg.event === 'init') {
     _nodes = msg.nodes || []; window._nodes = _nodes;
     _edges = msg.edges || []; _timeline = msg.timeline || [];
@@ -587,7 +668,7 @@ async function doCommit() {
   const msg = document.getElementById('commit-msg-input').value.trim() || 'Manual snapshot from UI';
   document.getElementById('commit-modal-bg').classList.remove('visible');
   document.getElementById('commit-msg-input').value = '';
-  const r = await fetch('/api/commit', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:msg}) });
+  const r = await fetch(api('/api/commit'), { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:msg}) });
   const entry = await r.json(); _timeline.unshift(entry); renderTimeline();
 }
 document.getElementById('commit-msg-input').addEventListener('keydown', e => { if (e.key==='Enter') doCommit(); if (e.key==='Escape') closeCommitModal(); });
