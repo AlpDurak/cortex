@@ -240,6 +240,12 @@ class DatabaseManager:
     def commit_snapshot(self, message: str = "Manual commit") -> dict:
         """
         Snapshot the live DB into the rolling 5-slot history.
+
+        This closes and reopens the underlying Kuzu database so Windows can
+        release file locks before the snapshot copy. Re-acquire `mgr.conn`
+        after calling this method; raw connection objects saved before the
+        snapshot are no longer valid.
+
         Returns the metadata entry for the new version.
         """
         meta = _load_meta(self.cortex_dir)
@@ -262,6 +268,8 @@ class DatabaseManager:
         # Reopen
         self._db = kuzu.Database(str(self.live_dir))
         self._conn = kuzu.Connection(self._db)
+        _apply_schema(self._conn)
+        _migrate_schema(self._conn)
 
     def _snapshot_live(self, message: str, meta: dict) -> dict:
         versions: list = meta["versions"]

@@ -3,16 +3,20 @@ Cortex CLI
 
 Usage:
     cortex init              Initialize the knowledge graph for the current project
+    cortex bootstrap         Scan a project and seed a baseline graph
+    cortex scan              Alias for bootstrap
     cortex run               Start the web UI (http://localhost:7842)
     cortex run --port 8000   Custom port
     cortex run --host 0.0.0.0
     cortex run --root /path/to/project
     cortex mcp               Start the MCP server (stdio transport for AI tool configs)
+    cortex snapshot          Create a graph snapshot
 """
 
 from __future__ import annotations
 
 import argparse
+import socket
 import sys
 from pathlib import Path
 
@@ -88,6 +92,29 @@ def _cmd_snapshot(args: argparse.Namespace) -> None:
     print(f"[Cortex] Snapshot: slot={entry['slot']} ts={entry['timestamp']}")
 
 
+def _cmd_bootstrap(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    if not root.exists():
+        print(f"error: directory does not exist: {root}", file=sys.stderr)
+        sys.exit(1)
+
+    from core.bootstrap import bootstrap_project_graph
+
+    result = bootstrap_project_graph(
+        root,
+        message=args.message,
+        max_files=args.max_files,
+    )
+    snapshot = result["snapshot"]
+    print(
+        "[Cortex] Baseline graph seeded: "
+        f"{result['files']} File node(s), "
+        f"{result['system_design']} SystemDesign node(s), "
+        f"{result['edges']} edge(s)."
+    )
+    print(f"[Cortex] Snapshot: slot={snapshot['slot']} ts={snapshot['timestamp']}")
+
+
 def _cmd_connect(args: argparse.Namespace) -> None:
     root = Path(args.root).resolve()
     from cortex.connect import run_connect
@@ -145,6 +172,16 @@ def _cmd_init(args: argparse.Namespace) -> None:
     if updated:
         print(f"  Migrated {updated} design node(s) to Decision Arc status vocabulary.")
     mgr.close()
+
+    # Stamp the project's agent files so every AI session uses Cortex.
+    from core.agent_instructions import write_agent_instructions
+
+    stamped = write_agent_instructions(root)
+    if stamped["written"]:
+        print(f"  Wrote Cortex rules to: {', '.join(stamped['written'])}")
+    if stamped["skipped"]:
+        print(f"  Cortex rules already present in: {', '.join(stamped['skipped'])}")
+
     print(f"Done - graph database ready at {root / '.cortex'}")
     print()
     print("Tip: run 'cortex hook install' to enable automatic git commit snapshots.")
@@ -163,6 +200,14 @@ def _cmd_run(args: argparse.Namespace) -> None:
     import uvicorn
     from cortex.web_server import _build_app
 
+    if not _port_available(args.host, args.port):
+        print(
+            f"error: port {args.port} is already in use on {args.host}.",
+            file=sys.stderr,
+        )
+        print(f"Try: cortex run --port {args.port + 1}", file=sys.stderr)
+        sys.exit(1)
+
     app = _build_app(root)
     print(f"Cortex  ->  http://{args.host}:{args.port}  (project: {root})")
     uvicorn.run(app, host=args.host, port=args.port)
@@ -179,6 +224,16 @@ def _cmd_mcp(args: argparse.Namespace) -> None:
     mcp_mod.PROJECT_ROOT = root
     transport = "sse" if args.sse else "stdio"
     mcp_mod.mcp.run(transport=transport)
+
+
+def _port_available(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
 
 
 def main() -> None:
@@ -205,6 +260,25 @@ def main() -> None:
         "--root", default=".", metavar="DIR",
         help="Project root (default: current directory)",
     )
+
+    # ── bootstrap / scan ────────────────────────────────────────────────────
+    def _add_bootstrap_parser(name: str, help_text: str) -> None:
+        p_boot = sub.add_parser(name, help=help_text)
+        p_boot.add_argument(
+            "--root", default=".", metavar="DIR",
+            help="Project root (default: current directory)",
+        )
+        p_boot.add_argument(
+            "--message", default="Initial graph bootstrap",
+            help="Snapshot message (default: Initial graph bootstrap)",
+        )
+        p_boot.add_argument(
+            "--max-files", type=int, default=250,
+            help="Maximum significant files to scan (default: 250)",
+        )
+
+    _add_bootstrap_parser("bootstrap", "Scan a project and seed a baseline graph")
+    _add_bootstrap_parser("scan", "Scan a project and seed a baseline graph")
 
     # ── run ─────────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Start the Cortex web UI")
@@ -271,16 +345,21 @@ def main() -> None:
     p_hook_status = hook_sub.add_parser("status", help="Show hook installation status")
     p_hook_status.add_argument("--root", default=".", metavar="DIR")
 
-    # ── snapshot (internal — called by git hook) ─────────────────────────────
-    p_snap = sub.add_parser("snapshot", add_help=False)
-    p_snap.add_argument("--message", default="Git commit snapshot")
-    p_snap.add_argument("--sha", default="")
-    p_snap.add_argument("--root", default=".")
+    # ── snapshot ────────────────────────────────────────────────────────────
+    p_snap = sub.add_parser("snapshot", help="Create a graph snapshot")
+    p_snap.add_argument("--message", default="Git commit snapshot",
+                        help="Snapshot message")
+    p_snap.add_argument("--sha", default="",
+                        help="Optional git commit SHA to append to the message")
+    p_snap.add_argument("--root", default=".",
+                        help="Project root (default: current directory)")
 
     args = parser.parse_args()
 
     if args.command == "init":
         _cmd_init(args)
+    elif args.command in {"bootstrap", "scan"}:
+        _cmd_bootstrap(args)
     elif args.command == "run":
         _cmd_run(args)
     elif args.command == "mcp":

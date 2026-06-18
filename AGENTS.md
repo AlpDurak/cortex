@@ -71,7 +71,7 @@ write_system_design_node(
   name="Human-readable name",
   section="Auth | Payments | Storage | ...",
   description="What this decision does",
-  status="planned | in-progress | done",
+  status="proposed | building | shipped",
   rationale="Why this approach was chosen",
   connects_to=[{"rel": "IMPLEMENTS", "target_id": "File:path/to/file.py"}]
 )

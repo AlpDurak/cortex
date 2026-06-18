@@ -46,7 +46,7 @@ The graph does not exist yet. You must populate it before doing anything else.
 3. **Create every node** with full detail:
    - Use descriptive names and complete descriptions
    - Set `section` to group related design nodes (Auth, Payments, Storage, etc.)
-   - Set `status` to `planned`, `in-progress`, or `done`
+   - Set `status` to `proposed`, `building`, or `shipped`
    - Set `rationale` to explain WHY this approach was chosen
    - Document every little detail — the graph is the persistent memory
 
@@ -121,7 +121,7 @@ write_system_design_node(
   name="Human-readable name",
   section="Auth",
   description="What this decision does and how",
-  status="planned",
+  status="proposed",
   rationale="Why this approach over alternatives",
   connects_to=[
     {"rel": "IMPLEMENTS", "target_id": "File:src/auth/oauth.py"},

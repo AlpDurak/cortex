@@ -51,7 +51,7 @@ def _get_session_id() -> str:
 
 def _trail_append(tool_name: str, args: dict | None = None) -> None:
     global _hook_reminder_shown
-    if not _hook_reminder_shown:
+    if not _hook_reminder_shown and not _cortex_hook_installed(PROJECT_ROOT):
         _hook_reminder_shown = True
         import sys as _sys
         print(
@@ -68,6 +68,21 @@ def _trail_append(tool_name: str, args: dict | None = None) -> None:
     }
     with trail_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+def _cortex_hook_installed(root: Path) -> bool:
+    candidate = root.resolve()
+    while True:
+        git_dir = candidate / ".git"
+        if git_dir.is_dir():
+            hook_path = git_dir / "hooks" / "post-commit"
+            try:
+                return hook_path.exists() and "cortex-hook" in hook_path.read_text(encoding="utf-8")
+            except OSError:
+                return False
+        if candidate == candidate.parent:
+            return False
+        candidate = candidate.parent
 
 
 def _get_mgr():
@@ -429,36 +444,11 @@ def write_agent_instructions() -> str:
     - Returns a summary of what was written.
     """
     _trail_append("write_agent_instructions")
-    section = """
-## Cortex Knowledge Graph
+    from core.agent_instructions import write_agent_instructions as _write
 
-This project uses **Cortex**, a local knowledge graph MCP server (server name: `cortex`).
-
-**Whenever you need to find something about this project — structure, dependencies, architecture, design decisions — look in Cortex first. Do not use grep, glob, ls, or file search to understand the codebase.**
-
-At the start of every session:
-1. Call `list_design_sections` to get a structural map of the project
-2. Use `explore_neighborhood(node_id)` to drill into any component
-3. Use `find_structural_path(src_id, dst_id)` to trace dependency chains
-4. Call `commit_snapshot` (or POST to `http://localhost:7842/api/commit`) before every `git commit`
-5. Document new architectural decisions with `write_system_design_node` before writing code
-"""
-
-    marker = "## Cortex Knowledge Graph"
-    written: list[str] = []
-    skipped: list[str] = []
-
-    for filename in ("CLAUDE.md", "AGENTS.md"):
-        target = PROJECT_ROOT / filename
-        if target.exists():
-            content = target.read_text(encoding="utf-8")
-            if marker in content:
-                skipped.append(filename)
-                continue
-            target.write_text(content.rstrip("\n") + "\n" + section, encoding="utf-8")
-        else:
-            target.write_text(section.lstrip("\n"), encoding="utf-8")
-        written.append(filename)
+    result = _write(PROJECT_ROOT)
+    written = result["written"]
+    skipped = result["skipped"]
 
     lines = ["# write_agent_instructions\n"]
     if written:

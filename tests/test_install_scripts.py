@@ -20,7 +20,8 @@ class InstallScriptTests(unittest.TestCase):
     def test_windows_installer_bootstraps_pip_after_creating_venv(self):
         script = read_installer("install.ps1")
 
-        self.assertIn('-m venv --without-pip "$INSTALL_DIR\\.venv"', script)
+        # The venv path is passed into the spinner runspace as $dir (= $INSTALL_DIR).
+        self.assertIn('-m venv --without-pip "$dir\\.venv"', script)
         self.assertIn("-m ensurepip --upgrade --default-pip", script)
 
     def test_windows_installer_updates_user_and_current_process_path(self):

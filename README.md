@@ -44,6 +44,12 @@ of these AI tools it finds on your machine:
 cortex init
 ```
 
+### Bootstrap a baseline graph
+```bash
+cortex bootstrap       # scan significant files and seed initial graph nodes
+cortex scan            # alias for bootstrap
+```
+
 ### Start the web UI
 ```bash
 cortex run              # http://localhost:7842
@@ -66,6 +72,7 @@ cortex connect          # interactive checkbox installer
 cortex hook install     # installs post-commit hook
 cortex hook status      # check if hook is active
 cortex hook uninstall   # remove the hook
+cortex snapshot --message "manual checkpoint"
 ```
 
 ### Push graph to an external graph database
